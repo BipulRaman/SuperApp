@@ -23,13 +23,13 @@ Open [preview/ui-preview.html](preview/ui-preview.html) in a browser to see a mo
 
 ```
 SuperApp/
-├─ App.js                      # navigation root
 ├─ index.js                    # Expo entry
 ├─ app.json                    # Expo config (name, package id, icon, splash)
 ├─ eas.json                    # EAS build profiles (preview = APK, production = AAB)
 ├─ package.json
 ├─ babel.config.js
-├─ src/
+├─ app/
+│  ├─ App.js                   # navigation root
 │  ├─ apps.js                  # list of apps shown on the home grid
 │  ├─ HomeScreen.js            # tile grid
 │  └─ WebViewScreen.js         # native WebView + toolbar + back handler
@@ -50,7 +50,7 @@ npx expo start
 
 Scan the QR code with **Expo Go** on your phone, or press `a` for an Android emulator.
 
-To add or change apps, edit [src/apps.js](src/apps.js):
+To add or change apps, edit [app/apps.js](app/apps.js):
 
 ```js
 { id: 'youtube', name: 'YouTube', url: 'https://m.youtube.com/', color: '#FF0000', initial: 'YT' }
@@ -117,7 +117,7 @@ Edit [app.json](app.json) and bump these for any public release:
 
 ## Notes & limitations
 
-- **Login walls.** Instagram / Facebook sometimes detect WebViews and ask you to "open in app." If that happens, swap the User‑Agent in [src/WebViewScreen.js](src/WebViewScreen.js) for a desktop one, or use OAuth flows for production apps.
+- **Login walls.** Instagram / Facebook sometimes detect WebViews and ask you to "open in app." If that happens, swap the User‑Agent in [app/WebViewScreen.js](app/WebViewScreen.js) for a desktop one, or use OAuth flows for production apps.
 - **Cookies are shared per app** (sandboxed by your package id) but isolated from the system Chrome — so logins live inside SuperApp only.
 - **iOS** is supported by the same code; just run `eas build -p ios` (requires an Apple Developer account).
 

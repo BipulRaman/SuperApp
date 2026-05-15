@@ -2,8 +2,8 @@ import 'react-native-gesture-handler';
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import HomeScreen from './src/HomeScreen';
-import WebViewScreen from './src/WebViewScreen';
+import HomeScreen from './HomeScreen';
+import WebViewScreen from './WebViewScreen';
 
 const Stack = createNativeStackNavigator();
 
