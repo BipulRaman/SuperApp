@@ -6,8 +6,6 @@ A tiny React Native (Expo) "super app" that opens **Facebook**, **Instagram**, *
 |---|---|
 | 2×2 grid of branded tiles | Native WebView with mobile User‑Agent + toolbar |
 
-Open [preview/ui-preview.html](preview/ui-preview.html) in a browser to see a mockup of both screens.
-
 ---
 
 ## Stack
@@ -21,27 +19,30 @@ Open [preview/ui-preview.html](preview/ui-preview.html) in a browser to see a mo
 
 ## Project layout
 
+The entire Expo project lives inside [app/](app/). The repo root only holds repo-wide metadata (`README.md`, `.gitignore`, `.github/`).
+
 ```
-SuperApp/
-├─ index.js                    # Expo entry
-├─ app.json                    # Expo config (name, package id, icon, splash)
-├─ eas.json                    # EAS build profiles (preview = APK, production = AAB)
-├─ package.json
-├─ babel.config.js
-├─ app/
-│  ├─ App.js                   # navigation root
-│  ├─ screens/
-│  │  ├─ HomeScreen.js         # tile grid
-│  │  └─ WebViewScreen.js      # native WebView + toolbar + back handler
-│  └─ data/
-│     └─ apps.js               # list of apps shown on the home grid
-├─ assets/                     # icons, splash, favicon (referenced by app.json)
-├─ scripts/
-│  └─ generate-icons.ps1
-├─ preview/
-│  └─ ui-preview.html          # static HTML mockup of both screens
-└─ .github/workflows/
-   └─ build-and-release.yml    # CI: builds APK on every push; tag v* → GitHub Release
+SuperApp/                          # repo root
+├─ README.md
+├─ .gitignore
+├─ .github/workflows/
+│  └─ build-and-release.yml    # CI: builds APK on every push; tag v* → GitHub Release
+└─ app/                          # Expo project root — run all npm/expo commands here
+   ├─ index.js                   # Expo entry
+   ├─ package.json
+   ├─ app.json                   # Expo config (name, package id, icon, splash)
+   ├─ eas.json                   # EAS build profiles (preview = APK, production = AAB)
+   ├─ babel.config.js
+   ├─ assets/                    # icons, splash, favicon (referenced by app.json)
+   ├─ scripts/
+   │  └─ generate-icons.ps1
+   └─ src/
+      ├─ App.js                  # navigation root
+      ├─ screens/
+      │  ├─ HomeScreen.js        # tile grid
+      │  └─ WebViewScreen.js     # native WebView + toolbar + back handler
+      └─ data/
+         └─ apps.js              # list of apps shown on the home grid
 ```
 
 ---
@@ -49,13 +50,14 @@ SuperApp/
 ## Run locally
 
 ```powershell
+cd app
 npm install
 npx expo start
 ```
 
 Scan the QR code with **Expo Go** on your phone, or press `a` for an Android emulator.
 
-To add or change apps, edit [app/data/apps.js](app/data/apps.js):
+To add or change apps, edit [app/src/data/apps.js](app/src/data/apps.js):
 
 ```js
 { id: 'youtube', name: 'YouTube', url: 'https://m.youtube.com/', color: '#FF0000', initial: 'YT' }
@@ -97,21 +99,22 @@ The workflow builds the APK and creates a GitHub Release at `https://github.com/
 Requires **JDK 17** and **Android Studio** (with the Android SDK).
 
 ```powershell
+cd app
 npm install
 npx expo prebuild --platform android --no-install --clean
 cd android
 .\gradlew assembleDebug
 ```
 
-The APK lands at `android/app/build/outputs/apk/debug/app-debug.apk`.
+The APK lands at `app/android/app/build/outputs/apk/debug/app-debug.apk`.
 
-For a signed release APK / AAB, generate a keystore once and configure signing in `android/gradle.properties` — easiest path is `eas build` (Option A above), which manages the keystore for you.
+For a signed release APK / AAB, generate a keystore once and configure signing in `app/android/gradle.properties` — easiest path is `eas build` (Option A above), which manages the keystore for you.
 
 ---
 
 ## Before you publish — checklist
 
-Edit [app.json](app.json) and bump these for any public release:
+Edit [app/app.json](app/app.json) and bump these for any public release:
 
 - `expo.name` — display name on the phone
 - `expo.android.package` — **must be globally unique** (e.g. `com.<you>.superapp`). Once on the Play Store this can never change.
@@ -122,7 +125,7 @@ Edit [app.json](app.json) and bump these for any public release:
 
 ## Notes & limitations
 
-- **Login walls.** Instagram / Facebook sometimes detect WebViews and ask you to "open in app." If that happens, swap the User‑Agent in [app/screens/WebViewScreen.js](app/screens/WebViewScreen.js) for a desktop one, or use OAuth flows for production apps.
+- **Login walls.** Instagram / Facebook sometimes detect WebViews and ask you to "open in app." If that happens, swap the User‑Agent in [app/src/screens/WebViewScreen.js](app/src/screens/WebViewScreen.js) for a desktop one, or use OAuth flows for production apps.
 - **Cookies are shared per app** (sandboxed by your package id) but isolated from the system Chrome — so logins live inside SuperApp only.
 - **iOS** is supported by the same code; just run `eas build -p ios` (requires an Apple Developer account).
 

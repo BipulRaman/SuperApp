@@ -17,6 +17,10 @@ on:
 permissions:
   contents: write   # needed to create the GitHub Release on tag push
 
+defaults:
+  run:
+    working-directory: app
+
 jobs:
   build:
     name: Build APK
@@ -31,7 +35,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -45,8 +48,8 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-            android/.gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+            app/android/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('app/android/**/*.gradle*', 'app/android/**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
@@ -60,7 +63,7 @@ jobs:
         run: chmod +x android/gradlew
 
       - name: Build debug APK
-        working-directory: android
+        working-directory: app/android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Stage APK with versioned name
@@ -74,9 +77,9 @@ jobs:
           fi
           mkdir -p dist
           cp "$SRC" "dist/${NAME}"
-          echo "path=dist/${NAME}" >> "$GITHUB_OUTPUT"
+          echo "path=app/dist/${NAME}" >> "$GITHUB_OUTPUT"
           echo "name=${NAME}" >> "$GITHUB_OUTPUT"
-          echo "Built: dist/${NAME}"
+          echo "Built: app/dist/${NAME}"
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
