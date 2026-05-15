@@ -1,21 +1,22 @@
 name: Build & Release APK
 
-# Single pipeline:
-#   • push to main / PR / manual run  → builds debug APK, uploads as artifact
-#   • push a tag like v1.2.3          → also publishes a GitHub Release with the APK attached
+# Pipeline:
+#   • push to main touching app/**  → auto-bumps patch version, builds & signs APK,
+#                                     creates a tag (v1.0.0, v1.0.1, …) and publishes a GitHub Release.
+#   • workflow_dispatch              → same flow, run on demand.
 #
-# No secrets required. Uses the built-in GITHUB_TOKEN to publish releases.
+# Requires repo secret: DEBUG_KEYSTORE_BASE64 (see .github/workflows/setup-keystore.yml).
 
 on:
   push:
     branches: [main]
-    tags: ['v*']
-  pull_request:
-    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/build-and-release.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write   # needed to create the GitHub Release on tag push
+  contents: write   # needed to push the tag and publish the GitHub Release
 
 defaults:
   run:
@@ -30,6 +31,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need full history + tags to compute next version
+
+      - name: Compute next version
+        id: version
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          # Find the highest existing tag of the form vMAJOR.MINOR.PATCH.
+          # If none exist, start at v1.0.0; otherwise bump the patch.
+          git fetch --tags --force --quiet
+          LAST_TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' \
+                      | sort -V | tail -n 1)
+          if [ -z "${LAST_TAG}" ]; then
+            NEXT="1.0.0"
+          else
+            IFS='.' read -r MA MI PA <<< "${LAST_TAG#v}"
+            PA=$((PA + 1))
+            NEXT="${MA}.${MI}.${PA}"
+          fi
+          echo "Last tag: ${LAST_TAG:-<none>} → next version: v${NEXT}"
+          echo "name=${NEXT}"      >> "$GITHUB_OUTPUT"
+          echo "tag=v${NEXT}"      >> "$GITHUB_OUTPUT"
+          echo "code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -60,24 +85,15 @@ jobs:
       - name: Install npm dependencies
         run: npm ci || npm install
 
-      - name: Set version (name from tag, code from run number)
-        id: version
+      - name: Apply version to app.json
         shell: bash
         env:
-          GH_RUN_NUMBER: ${{ github.run_number }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
         run: |
-          # versionName: tag like v1.2.3 → "1.2.3"; otherwise keep what's in app.json
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            VERSION_NAME="${GITHUB_REF_NAME#v}"
-          else
-            VERSION_NAME="$(node -p "require('./app.json').expo.version")"
-          fi
-          # versionCode: monotonically-increasing integer per CI run, ensures every
-          # build > previous so Android treats new APKs as updates (not downgrades).
-          VERSION_CODE="${GH_RUN_NUMBER}"
           # Pass values via env vars to node so they're never string-interpolated
-          # into the JS source (safer with arbitrary tag content).
-          VERSION_NAME="${VERSION_NAME}" VERSION_CODE="${VERSION_CODE}" node -e '
+          # into the JS source (safer with arbitrary content).
+          node -e '
             const fs = require("fs");
             const cfg = JSON.parse(fs.readFileSync("app.json", "utf8"));
             cfg.expo.version = process.env.VERSION_NAME;
@@ -86,8 +102,6 @@ jobs:
             fs.writeFileSync("app.json", JSON.stringify(cfg, null, 2) + "\n");
           '
           echo "Set expo.version=${VERSION_NAME}, expo.android.versionCode=${VERSION_CODE}"
-          echo "name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
-          echo "code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
 
       - name: Expo prebuild (generate android/ folder)
         run: npx expo prebuild --platform android --no-install --clean
@@ -126,13 +140,11 @@ jobs:
 
       - name: Stage APK with versioned name
         id: stage
+        env:
+          VERSION_TAG: ${{ steps.version.outputs.tag }}
         run: |
           SRC=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            NAME="SuperApp-${GITHUB_REF_NAME}.apk"
-          else
-            NAME="SuperApp-v${{ steps.version.outputs.name }}-build${{ steps.version.outputs.code }}-${GITHUB_SHA::7}.apk"
-          fi
+          NAME="SuperApp-${VERSION_TAG}.apk"
           mkdir -p dist
           cp "$SRC" "dist/${NAME}"
           echo "path=app/dist/${NAME}" >> "$GITHUB_OUTPUT"
@@ -147,11 +159,22 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub Release (only on tag push)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Create and push tag
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        env:
+          VERSION_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${VERSION_TAG}" -m "Release ${VERSION_TAG}"
+          git push origin "${VERSION_TAG}"
+          echo "Pushed tag ${VERSION_TAG}"
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
+          name: ${{ steps.version.outputs.tag }}
+          tag_name: ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           files: ${{ steps.stage.outputs.path }}
