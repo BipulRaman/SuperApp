@@ -134,16 +134,40 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Build debug APK
+      - name: Ensure release variant is signed with our stable keystore
+        shell: bash
+        run: |
+          # Expo prebuild's release buildType has no signingConfig by default
+          # (it expects the user to wire one). Inject one that reuses the same
+          # debug.keystore we installed above, so the release APK is signed
+          # with the same stable key → users can upgrade in place.
+          GRADLE_FILE=android/app/build.gradle
+          # Check whether the `release { ... }` block already declares a signingConfig.
+          if awk '/release[[:space:]]*{/,/^[[:space:]]*}/' "$GRADLE_FILE" | grep -q 'signingConfig'; then
+            echo "release buildType already has signingConfig — leaving it alone"
+          else
+            # Insert `signingConfig signingConfigs.debug` as the first line of release { ... }
+            sed -i '0,/release[[:space:]]*{/s||release {\n            signingConfig signingConfigs.debug|' "$GRADLE_FILE"
+            echo "Patched release buildType to use signingConfigs.debug"
+          fi
+          echo "--- release block after patch ---"
+          awk '/release[[:space:]]*{/,/^[[:space:]]*}/' "$GRADLE_FILE"
+
+      - name: Build release APK
         working-directory: app/android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Stage APK with versioned name
         id: stage
         env:
           VERSION_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          SRC=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
+          SRC=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$SRC" ]; then
+            echo "::error::No release APK found under android/app/build/outputs/apk/release"
+            find android/app/build/outputs -type f -name "*.apk" || true
+            exit 1
+          fi
           NAME="SuperApp-${VERSION_TAG}.apk"
           mkdir -p dist
           cp "$SRC" "dist/${NAME}"
