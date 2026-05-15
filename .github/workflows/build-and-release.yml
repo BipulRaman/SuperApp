@@ -49,15 +49,64 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             app/android/.gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('app/android/**/*.gradle*', 'app/android/**/gradle-wrapper.properties') }}
+          # app/android/ doesn't exist until `expo prebuild` runs, so we can't
+          # hash gradle files at this step. Hash app/package.json instead so
+          # the cache invalidates when Expo SDK / native deps change (which is
+          # what regenerates the gradle files anyway).
+          key: ${{ runner.os }}-gradle-${{ hashFiles('app/package.json') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
       - name: Install npm dependencies
         run: npm ci || npm install
 
+      - name: Set version (name from tag, code from run number)
+        id: version
+        shell: bash
+        env:
+          GH_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          # versionName: tag like v1.2.3 → "1.2.3"; otherwise keep what's in app.json
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+          else
+            VERSION_NAME="$(node -p "require('./app.json').expo.version")"
+          fi
+          # versionCode: monotonically-increasing integer per CI run, ensures every
+          # build > previous so Android treats new APKs as updates (not downgrades).
+          VERSION_CODE="${GH_RUN_NUMBER}"
+          # Pass values via env vars to node so they're never string-interpolated
+          # into the JS source (safer with arbitrary tag content).
+          VERSION_NAME="${VERSION_NAME}" VERSION_CODE="${VERSION_CODE}" node -e '
+            const fs = require("fs");
+            const cfg = JSON.parse(fs.readFileSync("app.json", "utf8"));
+            cfg.expo.version = process.env.VERSION_NAME;
+            cfg.expo.android = cfg.expo.android || {};
+            cfg.expo.android.versionCode = parseInt(process.env.VERSION_CODE, 10);
+            fs.writeFileSync("app.json", JSON.stringify(cfg, null, 2) + "\n");
+          '
+          echo "Set expo.version=${VERSION_NAME}, expo.android.versionCode=${VERSION_CODE}"
+          echo "name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+
       - name: Expo prebuild (generate android/ folder)
         run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Install stable debug keystore (for in-place APK upgrades)
+        shell: bash
+        run: |
+          if [ ! -f "android-keystore/debug.keystore" ]; then
+            echo "::error::app/android-keystore/debug.keystore not found."
+            echo "Run the 'Setup signing keystore (run once)' workflow first to generate and commit it."
+            echo "Without it, every CI build is signed with a different ephemeral key, and APKs cannot be installed over each other."
+            exit 1
+          fi
+          # `expo prebuild` creates android/app/debug.keystore from a freshly-generated
+          # ephemeral key. Replace it with our committed stable keystore so all builds
+          # share the same signature → users can install newer APKs over older without
+          # uninstalling first.
+          cp android-keystore/debug.keystore android/app/debug.keystore
+          echo "Installed stable debug keystore (sha256: $(sha256sum android/app/debug.keystore | cut -d' ' -f1))"
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
@@ -73,13 +122,13 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             NAME="SuperApp-${GITHUB_REF_NAME}.apk"
           else
-            NAME="SuperApp-${GITHUB_SHA::7}.apk"
+            NAME="SuperApp-v${{ steps.version.outputs.name }}-build${{ steps.version.outputs.code }}-${GITHUB_SHA::7}.apk"
           fi
           mkdir -p dist
           cp "$SRC" "dist/${NAME}"
           echo "path=app/dist/${NAME}" >> "$GITHUB_OUTPUT"
           echo "name=${NAME}" >> "$GITHUB_OUTPUT"
-          echo "Built: app/dist/${NAME}"
+          echo "Built: app/dist/${NAME} (versionName=${{ steps.version.outputs.name }}, versionCode=${{ steps.version.outputs.code }})"
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
