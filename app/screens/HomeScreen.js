@@ -8,7 +8,7 @@ import {
   StatusBar,
   SafeAreaView,
 } from 'react-native';
-import { APPS } from './apps';
+import { APPS } from '../data/apps';
 
 export default function HomeScreen({ navigation }) {
   const renderItem = ({ item }) => (

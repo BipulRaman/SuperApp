@@ -30,9 +30,14 @@ SuperApp/
 ├─ babel.config.js
 ├─ app/
 │  ├─ App.js                   # navigation root
-│  ├─ apps.js                  # list of apps shown on the home grid
-│  ├─ HomeScreen.js            # tile grid
-│  └─ WebViewScreen.js         # native WebView + toolbar + back handler
+│  ├─ screens/
+│  │  ├─ HomeScreen.js         # tile grid
+│  │  └─ WebViewScreen.js      # native WebView + toolbar + back handler
+│  └─ data/
+│     └─ apps.js               # list of apps shown on the home grid
+├─ assets/                     # icons, splash, favicon (referenced by app.json)
+├─ scripts/
+│  └─ generate-icons.ps1
 ├─ preview/
 │  └─ ui-preview.html          # static HTML mockup of both screens
 └─ .github/workflows/
@@ -50,7 +55,7 @@ npx expo start
 
 Scan the QR code with **Expo Go** on your phone, or press `a` for an Android emulator.
 
-To add or change apps, edit [app/apps.js](app/apps.js):
+To add or change apps, edit [app/data/apps.js](app/data/apps.js):
 
 ```js
 { id: 'youtube', name: 'YouTube', url: 'https://m.youtube.com/', color: '#FF0000', initial: 'YT' }
@@ -117,7 +122,7 @@ Edit [app.json](app.json) and bump these for any public release:
 
 ## Notes & limitations
 
-- **Login walls.** Instagram / Facebook sometimes detect WebViews and ask you to "open in app." If that happens, swap the User‑Agent in [app/WebViewScreen.js](app/WebViewScreen.js) for a desktop one, or use OAuth flows for production apps.
+- **Login walls.** Instagram / Facebook sometimes detect WebViews and ask you to "open in app." If that happens, swap the User‑Agent in [app/screens/WebViewScreen.js](app/screens/WebViewScreen.js) for a desktop one, or use OAuth flows for production apps.
 - **Cookies are shared per app** (sandboxed by your package id) but isolated from the system Chrome — so logins live inside SuperApp only.
 - **iOS** is supported by the same code; just run `eas build -p ios` (requires an Apple Developer account).
 
