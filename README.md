@@ -27,7 +27,7 @@ SuperApp/                          # repo root
 ├─ .gitignore
 ├─ .github/workflows/
 │  ├─ build-and-release.yml        # CI: builds signed APK; tag v* → GitHub Release
-│  └─ setup-keystore.yml           # one-time: generates & commits the signing keystore
+│  └─ setup-keystore.yml           # one-time: prints keystore for repo secret
 └─ app/                            # Expo project root — run all npm/expo commands here
    ├─ index.js                     # Expo entry
    ├─ package.json
@@ -35,8 +35,6 @@ SuperApp/                          # repo root
    ├─ eas.json                     # EAS build profiles (preview = APK, production = AAB)
    ├─ babel.config.js
    ├─ assets/                      # icons, splash, favicon (referenced by app.json)
-   ├─ android-keystore/
-   │  └─ debug.keystore            # stable signing key — created by setup-keystore.yml
    ├─ scripts/
    │  └─ generate-icons.ps1
    └─ src/
@@ -78,9 +76,13 @@ Fix it once:
 
 1. Push this repo to GitHub.
 2. Go to **Actions → "Setup signing keystore (run once)" → Run workflow**.
-3. The workflow generates `app/android-keystore/debug.keystore` and commits it to the repo.
+3. Open the finished run and find the **"Print setup instructions"** step. It prints a base64 block between `BEGIN` / `END` markers.
+4. Go to **Settings → Secrets and variables → Actions → New repository secret**:
+   - **Name:** `DEBUG_KEYSTORE_BASE64`
+   - **Value:** the base64 block from step 3 (no surrounding whitespace)
+5. Save.
 
-Every future build now reuses that keystore. Don't re-run the setup workflow unless you accept that already-installed APKs will need to be uninstalled before the next update.
+The build pipeline now decodes that secret on every run and signs the APK with it. The keystore is **never committed to the repo** — only in the secret. If you ever lose the secret, regenerate it with the setup workflow, but be aware that already-installed APKs will need to be uninstalled before the next update will install.
 
 ### Option A — GitHub Actions (recommended)
 
