@@ -3,6 +3,7 @@ package com.example.superapp
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.ActivityManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -14,6 +15,7 @@ import android.view.View
 import android.view.ViewTreeObserver
 import android.view.inputmethod.InputMethodManager
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -27,9 +29,11 @@ import com.example.superapp.browser.Downloads
 import com.example.superapp.browser.FileChooser
 import com.example.superapp.browser.FullscreenVideo
 import com.example.superapp.browser.Route
+import com.example.superapp.browser.SiteDrawer
 import com.example.superapp.browser.Tabs
 import com.example.superapp.browser.openExternally
 import com.example.superapp.browser.routeFor
+import com.example.superapp.browser.withoutTracking
 import com.example.superapp.data.SITES
 import com.example.superapp.data.Site
 import com.example.superapp.home.HomeScreen
@@ -46,6 +50,7 @@ class MainActivity : Activity() {
 
     private lateinit var home: HomeScreen
     private lateinit var browser: BrowserScreen
+    private lateinit var drawer: SiteDrawer
     private lateinit var tabs: Tabs
     private lateinit var fullscreen: FullscreenVideo
     private val fileChooser = FileChooser(this, REQUEST_FILE)
@@ -61,7 +66,20 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         window.setUpEdgeToEdge(findViewById(R.id.root))
         home = HomeScreen(findViewById(R.id.home), SITES, ::open)
-        browser = BrowserScreen(findViewById(R.id.browser), onBack = ::showHome, onReload = { tabs.active?.top?.reload() })
+        browser = BrowserScreen(
+            findViewById(R.id.browser),
+            onMenu = ::openDrawer,
+            onReload = { tabs.active?.top?.reload() },
+            onShare = ::shareCurrentPage,
+        )
+        drawer = SiteDrawer(
+            findViewById(R.id.drawer_layer),
+            SITES,
+            version = BuildConfig.VERSION_NAME,
+            covered = findViewById(R.id.browser),
+            onHome = ::showHome,
+            onSite = ::open,
+        )
         tabs = Tabs(this, browser.webContainer, liveSiteLimit(), ::attachCallbacks)
         fullscreen = FullscreenVideo(this, findViewById(R.id.fullscreen), ::updateBackCallback)
         afterFirstFrame {
@@ -125,6 +143,7 @@ class MainActivity : Activity() {
     }
 
     private fun showHome() {
+        drawer.close(animate = false)
         tabs.hideActive()
         getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(window.decorView.windowToken, 0)
         browser.isVisible = false
@@ -135,6 +154,25 @@ class MainActivity : Activity() {
     private fun onTabsChanged() {
         home.showOpenSites(tabs::isOpen)
         updateBackCallback()
+    }
+
+    private fun openDrawer() {
+        drawer.open(tabs.active?.site, tabs::isOpen)
+        updateBackCallback()
+    }
+
+    /** Shares the page on screen through the system share sheet, minus tracking parameters. */
+    private fun shareCurrentPage() {
+        val tab = tabs.active ?: return
+        val page = tab.top
+        val url = withoutTracking(page.url?.takeIf(URLUtil::isNetworkUrl) ?: tab.site.url)
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
+        page.title?.takeIf { it.isNotBlank() }?.let { send.putExtra(Intent.EXTRA_TITLE, it) }
+        try {
+            startActivity(Intent.createChooser(send, null))
+        } catch (e: ActivityNotFoundException) {
+            // Nothing on the device can share text.
+        }
     }
 
     // ---- WebView callbacks -------------------------------------------------------------------
@@ -225,6 +263,10 @@ class MainActivity : Activity() {
      * False when already on the grid.
      */
     private fun handleBack(): Boolean {
+        if (drawer.isOpen) {
+            drawer.close()
+            return true
+        }
         if (fullscreen.isShowing) {
             fullscreen.exit()
             return true
@@ -246,7 +288,7 @@ class MainActivity : Activity() {
      *  predictive back-to-home animation still works on the grid. */
     private fun updateBackCallback() {
         if (Build.VERSION.SDK_INT < 33) return
-        val wanted = fullscreen.isShowing || tabs.active != null
+        val wanted = drawer.isOpen || fullscreen.isShowing || tabs.active != null
         if (wanted == backCallbackRegistered) return
         val callback = (backCallback ?: OnBackInvokedCallback { handleBack() }.also { backCallback = it }) as OnBackInvokedCallback
         if (wanted) {

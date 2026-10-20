@@ -74,51 +74,52 @@
             android:orientation="vertical"
             android:visibility="gone">
 
-            <FrameLayout
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
                 android:paddingHorizontal="4dp">
 
-                <TextView
-                    android:id="@+id/back"
-                    android:layout_width="wrap_content"
-                    android:layout_height="40dp"
-                    android:layout_gravity="start|center_vertical"
+                <ImageButton
+                    android:id="@+id/menu"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:background="@drawable/ripple_light"
-                    android:contentDescription="@string/cd_back_to_apps"
-                    android:drawableStart="@drawable/ic_back"
-                    android:gravity="center_vertical"
-                    android:paddingStart="6dp"
-                    android:paddingEnd="12dp"
-                    android:text="@string/apps"
-                    android:textColor="@color/text_primary"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
+                    android:contentDescription="@string/cd_open_menu"
+                    android:src="@drawable/ic_menu" />
 
                 <!-- The site chip (brand color + glyph) is set as a compound drawable in code. -->
                 <TextView
                     android:id="@+id/title"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:drawablePadding="8dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:drawablePadding="10dp"
                     android:ellipsize="end"
                     android:gravity="center_vertical"
-                    android:maxWidth="210dp"
                     android:maxLines="1"
                     android:textColor="@color/text_primary"
-                    android:textSize="16sp"
+                    android:textSize="17sp"
                     android:textStyle="bold" />
 
                 <ImageButton
                     android:id="@+id/reload"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
-                    android:layout_gravity="end|center_vertical"
                     android:background="@drawable/ripple_light"
                     android:contentDescription="@string/cd_reload"
                     android:src="@drawable/ic_reload" />
-            </FrameLayout>
+
+                <ImageButton
+                    android:id="@+id/share"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/ripple_light"
+                    android:contentDescription="@string/cd_share"
+                    android:src="@drawable/ic_share" />
+            </LinearLayout>
 
             <!-- WebViews are added at index 0, under the progress bar, so showing/hiding the
                  bar never resizes the page. -->
@@ -135,6 +136,86 @@
                     android:alpha="0" />
             </FrameLayout>
         </LinearLayout>
+
+        <!-- Site drawer: slides in over the site screen from the start edge (SiteDrawer). -->
+        <FrameLayout
+            android:id="@+id/drawer_layer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+
+            <View
+                android:id="@+id/drawer_scrim"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#99000000"
+                android:importantForAccessibility="no" />
+
+            <LinearLayout
+                android:id="@+id/drawer"
+                android:layout_width="300dp"
+                android:layout_height="match_parent"
+                android:layout_gravity="start"
+                android:background="@drawable/drawer_background"
+                android:clickable="true"
+                android:elevation="16dp"
+                android:focusable="false"
+                android:orientation="vertical">
+
+                <!-- The app icon is set as a 40dp compound drawable by SiteDrawer. -->
+                <TextView
+                    android:id="@+id/drawer_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:drawablePadding="14dp"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="24dp"
+                    android:paddingTop="24dp"
+                    android:paddingBottom="20dp"
+                    android:text="@string/app_name"
+                    android:textColor="@color/text_primary"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginHorizontal="24dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="#14FFFFFF" />
+
+                <ScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:overScrollMode="ifContentScrolls"
+                    android:scrollbars="none">
+
+                    <LinearLayout
+                        android:id="@+id/drawer_items"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingBottom="12dp" />
+                </ScrollView>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginHorizontal="24dp"
+                    android:background="#14FFFFFF" />
+
+                <TextView
+                    android:id="@+id/drawer_version"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingHorizontal="24dp"
+                    android:paddingTop="14dp"
+                    android:paddingBottom="18dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </FrameLayout>
     </FrameLayout>
 
     <!-- Fullscreen video; outside the padded root so it covers the whole screen. -->

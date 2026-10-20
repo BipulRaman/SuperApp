@@ -6,10 +6,16 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import com.example.superapp.R
 import com.example.superapp.data.Site
+import com.example.superapp.ui.ACCENT_COLORS
 import com.example.superapp.ui.siteChip
 
-/** The site screen around the WebViews: toolbar (back to apps, site title, reload) and progress bar. */
-class BrowserScreen(private val view: View, onBack: () -> Unit, onReload: () -> Unit) {
+/** The site screen around the WebViews: toolbar (menu, site title, reload, share) and progress bar. */
+class BrowserScreen(
+    private val view: View,
+    onMenu: () -> Unit,
+    onReload: () -> Unit,
+    onShare: () -> Unit,
+) {
 
     /** Holds the sites' WebViews, underneath the progress bar. */
     val webContainer: FrameLayout = view.findViewById(R.id.web_container)
@@ -17,10 +23,11 @@ class BrowserScreen(private val view: View, onBack: () -> Unit, onReload: () -> 
     private val progressBar: View = view.findViewById(R.id.progress)
 
     init {
-        view.findViewById<View>(R.id.back).setOnClickListener { onBack() }
+        view.findViewById<View>(R.id.menu).setOnClickListener { onMenu() }
         view.findViewById<View>(R.id.reload).setOnClickListener { onReload() }
+        view.findViewById<View>(R.id.share).setOnClickListener { onShare() }
         progressBar.pivotX = 0f
-        progressBar.background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, ACCENT)
+        progressBar.background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, ACCENT_COLORS)
     }
 
     var isVisible: Boolean
@@ -54,9 +61,5 @@ class BrowserScreen(private val view: View, onBack: () -> Unit, onReload: () -> 
             bar.scaleX = target
             bar.alpha = 1f
         }
-    }
-
-    private companion object {
-        val ACCENT = intArrayOf(0xFF6366F1.toInt(), 0xFFA855F7.toInt(), 0xFFEC4899.toInt())
     }
 }

@@ -1,5 +1,6 @@
 package com.example.superapp
 
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
@@ -20,6 +21,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
+import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
 class MainActivityTest {
@@ -76,7 +78,7 @@ class MainActivityTest {
         val somewhereInside = "https://m.facebook.com/some/post"
         webView.loadUrl(somewhereInside)
 
-        activity.findViewById<View>(R.id.back).performClick()
+        pressBack()
 
         assertTrue(isShown(R.id.home))
         assertSame(webView, webViews.single())
@@ -210,5 +212,88 @@ class MainActivityTest {
 
         assertEquals(listOf(site), webViews)
         assertTrue(shadowOf(popup).wasDestroyCalled())
+    }
+
+    private fun drawerRows(): List<View> {
+        val items = activity.findViewById<ViewGroup>(R.id.drawer_items)
+        return (0 until items.childCount).map(items::getChildAt)
+    }
+
+    private fun openDrawer() = activity.findViewById<View>(R.id.menu).performClick()
+
+    /** Lets the drawer's slide animation finish. */
+    private fun settle() = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+
+    @Test
+    fun `the menu opens a drawer with home and every site`() {
+        tiles[0].performClick()
+
+        openDrawer()
+
+        assertTrue(isShown(R.id.drawer_layer))
+        val rows = drawerRows()
+        assertEquals(
+            listOf(activity.getString(R.string.menu_home)) + SITES.map { it.name },
+            rows.map { it.findViewById<TextView>(R.id.label).text.toString() },
+        )
+        assertEquals(listOf(false, true, false, false, false), rows.map { it.isSelected })
+        assertEquals(View.VISIBLE, rows[1].findViewById<View>(R.id.live).visibility)
+        assertEquals(View.GONE, rows[2].findViewById<View>(R.id.live).visibility)
+        assertEquals(
+            activity.getString(R.string.version, BuildConfig.VERSION_NAME),
+            activity.findViewById<TextView>(R.id.drawer_version).text.toString(),
+        )
+    }
+
+    @Test
+    fun `picking a site in the drawer switches to it`() {
+        tiles[0].performClick()
+        openDrawer()
+
+        drawerRows()[2].performClick()
+        settle()
+
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.drawer_layer).visibility)
+        assertEquals(SITES[1].name, activity.findViewById<TextView>(R.id.title).text)
+        assertEquals(2, webViews.size)
+    }
+
+    @Test
+    fun `back closes the drawer before leaving the site`() {
+        tiles[0].performClick()
+        openDrawer()
+
+        pressBack()
+        settle()
+
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.drawer_layer).visibility)
+        assertTrue(isShown(R.id.browser))
+    }
+
+    @Test
+    fun `home in the drawer returns to the grid`() {
+        tiles[0].performClick()
+        openDrawer()
+
+        drawerRows()[0].performClick()
+        settle()
+
+        assertTrue(isShown(R.id.home))
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.drawer_layer).visibility)
+        assertTrue(isLive(tiles[0]))
+    }
+
+    @Test
+    fun `share sends the current page without tracking parameters`() {
+        tiles[0].performClick()
+        webViews.single().loadUrl("https://m.facebook.com/story.php?story_fbid=1&id=2&mibextid=abc&utm_source=share")
+
+        activity.findViewById<View>(R.id.share).performClick()
+
+        val chooser = shadowOf(activity).nextStartedActivity
+        assertEquals(Intent.ACTION_CHOOSER, chooser.action)
+        val send = chooser.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)!!
+        assertEquals(Intent.ACTION_SEND, send.action)
+        assertEquals("https://m.facebook.com/story.php?story_fbid=1&id=2", send.getStringExtra(Intent.EXTRA_TEXT))
     }
 }

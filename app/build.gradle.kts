@@ -60,6 +60,11 @@ android {
         includeInBundle = false
     }
 
+    buildFeatures {
+        // BuildConfig.VERSION_NAME is shown at the bottom of the site drawer.
+        buildConfig = true
+    }
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
         // Robolectric's Android 16 sandbox reaches into JDK internals (FileDescriptor access).
