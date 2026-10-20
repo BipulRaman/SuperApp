@@ -14,7 +14,7 @@ SuperApp used to be an Expo / React Native app. It was rewritten as a plain nati
 
 | | Before (Expo / React Native) | Now (native) |
 |---|---|---|
-| APK size | 64.7 MB (4 ABIs of React Native, Hermes, Fabric) | ~40 KB, no native libraries |
+| APK size | 64.7 MB (4 ABIs of React Native, Hermes, Fabric) | ~75 KB, no native libraries |
 | App start | Boot a JS engine + ~45 native libs before the first frame | One Activity, a few views |
 | Opening a site | New WebView + full page load **every time** | WebView created once, then kept alive |
 | Going back to a site | Cold reload, scroll position lost | Instant, exactly where you left it |
@@ -27,7 +27,7 @@ Other details: hidden sites are paused (media stopped, timers throttled), everyt
 
 ## Stack
 
-- **Kotlin**, Android SDK only — no AndroidX, Compose or other runtime libraries
+- **Kotlin** on the Android SDK, plus only `androidx.webkit` (for Chrome's client hints) — no Compose, AppCompat or start-up initializers
 - **minSdk 26** (Android 8.0), **targetSdk 36** (Android 16), edge-to-edge, predictive back
 - Android Gradle Plugin 9.4 (built-in Kotlin), Gradle 9.8 wrapper, JDK 17+
 - Tests: JUnit + Robolectric
@@ -55,8 +55,9 @@ SuperApp/                                  # repo root: metadata only
       │  │  ├─ data/Sites.kt               # the sites shown on the home grid
       │  │  ├─ home/HomeScreen.kt          # tile grid + "already loaded" dots
       │  │  ├─ browser/
-      │  │  │  ├─ Tabs.kt                  # one persistent WebView per site (the speed-up)
-      │  │  │  ├─ WebViews.kt              # WebView settings + Chrome-like user agent
+      │  │  │  ├─ Tabs.kt                  # one persistent WebView per site (the speed-up) + its pop-ups
+      │  │  │  ├─ WebViews.kt              # WebView settings
+      │  │  │  ├─ ChromeIdentity.kt        # look exactly like Chrome: user agent + client hints
       │  │  │  ├─ BrowserScreen.kt         # toolbar + progress bar
       │  │  │  ├─ ExternalLinks.kt         # which links leave the app, and how
       │  │  │  ├─ FileChooser.kt           # <input type="file"> uploads (files, camera, camcorder)
@@ -148,7 +149,7 @@ The APK lands at `app/build/outputs/apk/release/SuperApp-release.apk`. Without e
 ## Notes & limitations
 
 - **Android only** (8.0+). The old React Native code could in theory target iOS, but that path was never built or shipped.
-- **Login walls.** SuperApp presents the same user agent as Chrome for Android (built from the device's real WebView version), so sites serve their normal mobile web app. Some sites may still push you toward their native app.
+- **Logins.** Sites refuse or redirect logins when they spot an embedded WebView, so SuperApp identifies itself exactly like Chrome for Android on the same engine version: Chrome's User-Agent string *and* matching User-Agent Client Hints (`Sec-CH-UA*` headers, `navigator.userAgentData`), which WebView would otherwise fill with "Android WebView". Sign-in buttons that open a pop-up ("Continue with Google/Apple") get a real window over the site, linked back to it like in Chrome; back or the page itself closes it. Pop-ups the user didn't tap for are blocked.
 - **Cookies live inside SuperApp** (sandboxed by the package id), separate from Chrome. They are excluded from backups and device transfers.
 - **Memory.** Opened sites stay loaded for instant switching. They all share one page renderer, so phones with less than 6 GB of RAM keep only the 2–3 most recently used sites loaded (opening another closes the least recently used one). If the renderer still crashes or is killed, the loaded sites close and SuperApp returns to the grid.
 - **Uploads** use the system file picker, plus the camera/camcorder when a site accepts photos or videos.

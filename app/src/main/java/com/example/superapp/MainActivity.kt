@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
+import android.os.Message
 import android.view.View
 import android.view.ViewTreeObserver
 import android.view.inputmethod.InputMethodManager
@@ -60,7 +61,7 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         window.setUpEdgeToEdge(findViewById(R.id.root))
         home = HomeScreen(findViewById(R.id.home), SITES, ::open)
-        browser = BrowserScreen(findViewById(R.id.browser), onBack = ::showHome, onReload = { tabs.active?.webView?.reload() })
+        browser = BrowserScreen(findViewById(R.id.browser), onBack = ::showHome, onReload = { tabs.active?.top?.reload() })
         tabs = Tabs(this, browser.webContainer, liveSiteLimit(), ::attachCallbacks)
         fullscreen = FullscreenVideo(this, findViewById(R.id.fullscreen), ::updateBackCallback)
         afterFirstFrame {
@@ -146,6 +147,8 @@ class MainActivity : Activity() {
         }
     }
 
+    // Lint misses the onRenderProcessGone override below in a Kotlin anonymous object.
+    @SuppressLint("MissingOnRenderProcessGone")
     private val pageClient = object : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
             when (routeFor(request.url.scheme, request.hasGesture())) {
@@ -166,8 +169,25 @@ class MainActivity : Activity() {
     private val chromeClient = object : WebChromeClient() {
         override fun onProgressChanged(view: WebView, newProgress: Int) {
             val tab = tabs.find(view) ?: return
+            if (view !== tab.top) return
             tab.progress = newProgress
             if (tab === tabs.active) browser.setProgress(newProgress)
+        }
+
+        override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+            // Like a browser's pop-up blocker: only windows the user asked for, e.g. by tapping
+            // "Sign in with Google". The page keeps a live window.opener link to the pop-up.
+            if (!isUserGesture) return false
+            val popup = tabs.openPopup(view) ?: return false
+            (resultMsg.obj as WebView.WebViewTransport).webView = popup
+            resultMsg.sendToTarget()
+            if (tabs.find(popup) === tabs.active) browser.setProgress(0, animate = false)
+            return true
+        }
+
+        override fun onCloseWindow(window: WebView) {
+            val tab = tabs.closePopup(window) ?: return
+            if (tab === tabs.active) browser.setProgress(tab.progress, animate = false)
         }
 
         override fun onShowCustomView(view: View, callback: CustomViewCallback) = fullscreen.show(view, callback)
@@ -184,29 +204,41 @@ class MainActivity : Activity() {
         override fun getDefaultVideoPoster(): Bitmap = blankPoster
     }
 
-    /** A page renderer crashed or was killed for memory: drop that site, never the whole app. */
+    /** A page renderer crashed or was killed for memory: drop what it showed, never the whole app. */
     private fun onRendererGone(view: WebView) {
-        val wasActive = tabs.active?.webView === view
-        if (wasActive) fullscreen.dismiss()
-        val tab = tabs.discard(view)
-        if (wasActive && tab != null) {
+        val activeOwner = tabs.find(view)?.takeIf { it === tabs.active }
+        if (activeOwner != null) fullscreen.dismiss()
+        val closed = tabs.discard(view)
+        if (activeOwner != null && closed != null) {
             showHome()
-            Toast.makeText(this, getString(R.string.site_closed, tab.site.name), Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.site_closed, closed.site.name), Toast.LENGTH_LONG).show()
         } else {
+            if (activeOwner != null) browser.setProgress(activeOwner.progress, animate = false)
             onTabsChanged()
         }
     }
 
     // ---- Back navigation ---------------------------------------------------------------------
 
-    /** Leaves fullscreen, goes back in the page, or returns to the grid. False when on the grid. */
+    /**
+     * Leaves fullscreen, goes back in the page (or out of a pop-up window), or returns to the grid.
+     * False when already on the grid.
+     */
     private fun handleBack(): Boolean {
         if (fullscreen.isShowing) {
             fullscreen.exit()
             return true
         }
         val tab = tabs.active ?: return false
-        if (tab.webView.canGoBack()) tab.webView.goBack() else showHome()
+        val top = tab.top
+        when {
+            top.canGoBack() -> top.goBack()
+            top !== tab.webView -> {
+                tabs.closePopup(top)
+                browser.setProgress(tab.progress, animate = false)
+            }
+            else -> showHome()
+        }
         return true
     }
 

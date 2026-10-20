@@ -68,6 +68,9 @@ android {
 }
 
 dependencies {
+    // Only for UA client hints (WebSettingsCompat.setUserAgentMetadata); no startup initializers.
+    implementation("androidx.webkit:webkit:1.17.1")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
 }

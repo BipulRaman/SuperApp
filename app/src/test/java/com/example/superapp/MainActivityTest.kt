@@ -1,5 +1,8 @@
 package com.example.superapp
 
+import android.os.Handler
+import android.os.Looper
+import android.os.Message
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.RenderProcessGoneDetail
@@ -8,6 +11,7 @@ import android.widget.TextView
 import com.example.superapp.browser.PAUSE_MEDIA_JS
 import com.example.superapp.data.SITES
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -160,5 +164,51 @@ class MainActivityTest {
         controller.pause().stop().destroy()
 
         assertTrue(shadowOf(webView).wasDestroyCalled())
+    }
+
+    /** Simulates a page calling window.open(); returns the new window, or null if it was refused. */
+    private fun requestWindow(opener: WebView, userGesture: Boolean = true): WebView? {
+        val transport = opener.WebViewTransport()
+        val message = Message.obtain(Handler(Looper.getMainLooper()), 0, transport)
+        val created = shadowOf(opener).webChromeClient.onCreateWindow(opener, false, userGesture, message)
+        shadowOf(Looper.getMainLooper()).idle()
+        return if (created) transport.webView else null
+    }
+
+    @Test
+    fun `sign-in pop-ups open over the site and back closes them`() {
+        tiles[0].performClick()
+        val site = webViews.single()
+
+        val popup = requestWindow(site)!!
+
+        assertEquals(listOf(site, popup), webViews)
+        assertEquals(View.VISIBLE, popup.visibility)
+
+        pressBack()
+
+        assertTrue(shadowOf(popup).wasDestroyCalled())
+        assertEquals(listOf(site), webViews)
+        assertTrue(isShown(R.id.browser))
+    }
+
+    @Test
+    fun `pages can't open windows on their own`() {
+        tiles[0].performClick()
+
+        assertNull(requestWindow(webViews.single(), userGesture = false))
+        assertEquals(1, webViews.size)
+    }
+
+    @Test
+    fun `a pop-up closed by its page returns to the site`() {
+        tiles[0].performClick()
+        val site = webViews.single()
+        val popup = requestWindow(site)!!
+
+        shadowOf(site).webChromeClient.onCloseWindow(popup)
+
+        assertEquals(listOf(site), webViews)
+        assertTrue(shadowOf(popup).wasDestroyCalled())
     }
 }
