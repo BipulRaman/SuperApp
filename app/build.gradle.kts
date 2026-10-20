@@ -11,7 +11,8 @@ android {
         applicationId = "com.example.superapp"
         minSdk = 26
         targetSdk = 36
-        // CI passes -PversionCode=<run number> -PversionName=<tag>; local builds use these defaults.
+        // CI passes -PversionCode / -PversionName from the release tag (1.2.3 -> 10203); local
+        // builds use these defaults.
         versionCode = providers.gradleProperty("versionCode").map(String::toInt).getOrElse(1)
         versionName = providers.gradleProperty("versionName").getOrElse("1.0.0-dev")
     }

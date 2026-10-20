@@ -97,9 +97,15 @@ Site(id = "youtube", name = "YouTube", url = "https://m.youtube.com/", colors = 
 
 APKs are built **only when a GitHub Release is published**. Pushes and merges to `main` never build or publish anything.
 
+### Updates
+
+The app never checks for updates itself. Release APKs are signed with a permanent key, and each release has a higher `versionCode`, so a user with SuperApp already installed just installs the newer APK and Android updates the app in place, keeping their logins.
+
+That only holds while the key stays the same. It lives in the repository secret `DEBUG_KEYSTORE_BASE64` (alias `androiddebugkey`, password `android`), and a release build fails if the secret is missing or the APK ends up signed with any other key. **Never delete or replace that secret**: an APK signed with a different key can't update existing installs — people would have to uninstall first and lose their logins.
+
 ### One-time setup — generate a stable signing keystore
 
-For users to install a newer APK over an older one **without uninstalling**, every build must be signed with the **same key**.
+Only needed for a fresh fork; this repo already has its key.
 
 1. Push this repo to GitHub.
 2. Go to **Actions → "Setup signing keystore (run once)" → Run workflow**.
@@ -107,18 +113,18 @@ For users to install a newer APK over an older one **without uninstalling**, eve
 4. Go to **Settings → Secrets and variables → Actions → New repository secret**:
    - **Name:** `DEBUG_KEYSTORE_BASE64`
    - **Value:** the base64 block from step 3 (no surrounding whitespace)
-5. Save.
+5. Save, keep a private backup of the keystore, and delete the workflow run (its log contains the key).
 
-The release workflow decodes that secret and signs the APK with it (and fails if the APK ends up signed with any other key). The keystore is **never committed to the repo** — only in the secret. If you ever lose the secret, regenerate it with the setup workflow, but already-installed APKs will need to be uninstalled before the next update will install.
+The keystore is **never committed to the repo** — only in the secret.
 
 ### Publish a release
 
-1. **Releases → Draft a new release**, create a tag such as `v1.2.0` on the commit you want to ship, and **Publish**.
-2. [.github/workflows/build-and-release.yml](.github/workflows/build-and-release.yml) runs the tests and Android Lint, builds the minified release APK, signs it, and attaches it to that release as `SuperApp-v1.2.0.apk` (usually within a few minutes).
+1. **Releases → Draft a new release**, create a tag with a semantic version such as `v1.2.3` (or `1.2.3`) on the commit you want to ship, and **Publish**.
+2. [.github/workflows/build-and-release.yml](.github/workflows/build-and-release.yml) runs the tests and Android Lint, builds the minified release APK, signs it, and attaches it to that release as `SuperApp-v1.2.3.apk` (usually within a few minutes).
 
-`versionName` comes from the tag (`v1.2.0` → `1.2.0`) and `versionCode` from the workflow run number, so every release is a valid in-place upgrade of the previous one.
+The tag version is stamped into the APK: `versionName` = `1.2.3`, `versionCode` = `10203` (major × 10000 + minor × 100 + patch), so every newer version installs as an update over older ones. If the tag isn't in that format, or minor/patch reach 100, the release build fails.
 
-**Install it:** download the APK from the release, copy it to your phone and tap to install (allow "Install unknown apps" once). Newer releases install over older ones and keep your logins — including over the old Expo-based versions, since the package id and signing key are unchanged.
+**Install it:** download the APK from the release, copy it to your phone and tap to install (allow "Install unknown apps" once). If SuperApp is already installed, this updates it in place — including over the old Expo-based versions, since the package id and signing key are unchanged.
 
 ### Build locally
 
