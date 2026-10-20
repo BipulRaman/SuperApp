@@ -84,6 +84,7 @@ jobs:
 
       - name: Verify signature and stage APK
         id: stage
+        shell: bash
         env:
           VERSION_TAG: ${{ steps.version.outputs.tag }}
         run: |
@@ -96,17 +97,21 @@ jobs:
           # Guard against shipping an APK signed with some other key: it would refuse to
           # install over the version people already have.
           APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n 1)apksigner"
-          APK_CERT=$("$APKSIGNER" verify --print-certs "$SRC" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          SIGNERS=$("$APKSIGNER" verify --print-certs "$SRC")
+          # apksigner's line format varies by version ("Signer #1 certificate SHA-256 digest: …",
+          # "V2 Signer: certificate SHA-256 digest: …"); the digest is always the last field.
+          APK_CERTS=$(printf '%s\n' "$SIGNERS" | grep 'certificate SHA-256 digest:' | awk '{print $NF}' | sort -u || true)
           KEYSTORE_CERT=$(keytool -exportcert -keystore "$SUPERAPP_KEYSTORE" -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
-          if [ -z "$APK_CERT" ] || [ "$APK_CERT" != "$KEYSTORE_CERT" ]; then
-            echo "::error::APK signer ($APK_CERT) does not match the stable keystore ($KEYSTORE_CERT)."
+          if [ "$APK_CERTS" != "$KEYSTORE_CERT" ]; then
+            printf '%s\n' "$SIGNERS"
+            echo "::error::APK signer(s) [${APK_CERTS}] do not match the stable keystore (${KEYSTORE_CERT})."
             exit 1
           fi
           NAME="SuperApp-${VERSION_TAG}.apk"
           mkdir -p dist
           cp "$SRC" "dist/${NAME}"
           echo "path=dist/${NAME}" >> "$GITHUB_OUTPUT"
-          echo "Built dist/${NAME} ($(du -h "dist/${NAME}" | cut -f1), signer sha256=${APK_CERT})"
+          echo "Built dist/${NAME} ($(du -h "dist/${NAME}" | cut -f1), signer sha256=${APK_CERTS})"
 
       - name: Attach APK to the release
         env:
