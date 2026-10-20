@@ -21,11 +21,36 @@ class PageTweaksTest {
     }
 
     @Test
-    fun `facebook tweak targets the open app buttons but never the top bar`() {
+    fun `facebook tweak is a self-contained script that runs once per page`() {
+        val script = facebook.script
+        assertTrue(script.startsWith("(function () {"))
+        assertTrue(script.endsWith("})();"))
+        assertTrue(script.contains("Symbol.for('superapp.open-app-hider')"))
+        assertTrue(script.contains("window.top !== window"))
+    }
+
+    @Test
+    fun `facebook tweak finds open app controls by tag, label or text`() {
         val script = facebook.script
         assertTrue(script.contains("""[data-log-comp-type*="open_app" i]"""))
         assertTrue(script.contains("""[role="button"][aria-label="Open app" i]"""))
-        assertTrue(script.contains(".fixed-container:is(.bottom,.above-bottom)"))
-        assertFalse(script.contains(".fixed-container.top"))
+        assertTrue(script.contains("""/^(open|use|get)( in| the)? app$/i"""))
+    }
+
+    @Test
+    fun `facebook tweak hides only small bottom bars that hold nothing but open app`() {
+        val script = facebook.script
+        assertTrue(script.contains("getElementsByClassName('fixed-container')"))
+        assertTrue(script.contains("MAX_BAR_HEIGHT = 150"))
+        assertTrue(script.contains("classList.contains('bottom') || bar.classList.contains('above-bottom')"))
+        assertTrue(script.contains("bottom && found && !others"))
+    }
+
+    @Test
+    fun `facebook tweak avoids newer selectors and forced layout`() {
+        val script = facebook.script
+        for (avoided in listOf(":has(", ":is(", "getComputedStyle", "getBoundingClientRect", "offsetHeight")) {
+            assertFalse(avoided, script.contains(avoided))
+        }
     }
 }

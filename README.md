@@ -156,7 +156,7 @@ The APK lands at `app/build/outputs/apk/release/SuperApp-release.apk`. Without e
 - **Cookies live inside SuperApp** (sandboxed by the package id), separate from Chrome. They are excluded from backups and device transfers.
 - **Memory.** Opened sites stay loaded for instant switching. They all share one page renderer, so phones with less than 6 GB of RAM keep only the 2–3 most recently used sites loaded (opening another closes the least recently used one). If the renderer still crashes or is killed, the loaded sites close and SuperApp returns to the grid.
 - **Uploads** use the system file picker, plus the camera/camcorder when a site accepts photos or videos.
-- **Facebook's "Open app" banners** are hidden: a small style/script ([PageTweaks.kt](app/src/main/java/com/example/superapp/browser/PageTweaks.kt)) is injected into facebook.com pages only, before Facebook's own scripts run. Similar fixes for other sites go in the same file.
+- **Facebook's "Open app" nags** are hidden: its "Open app" buttons, and the bar pinned to the bottom of the screen when that button is all it holds (the comment box and dialogs stay). A small script ([PageTweaks.kt](app/src/main/java/com/example/superapp/browser/PageTweaks.kt)) is injected into facebook.com pages only, before Facebook's own scripts run. Similar fixes for other sites go in the same file.
 - **Sharing** (top-right) sends the current page's link without tracking parameters: `utm_*`, `fbclid`, `igsh`, X's `s`/`t`, Facebook's `mibextid`/`__cft__`, LinkedIn's `trk`/`rcm` and similar are removed; parameters the page needs (post ids, `v=`…) stay.
 - **Links to other apps** (`intent:`, `mailto:`, `tel:`, store links…) open only when you tap them, so pages can't bounce you out of SuperApp on their own.
 

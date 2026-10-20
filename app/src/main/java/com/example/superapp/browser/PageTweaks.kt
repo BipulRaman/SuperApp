@@ -15,46 +15,74 @@ internal class PageTweak(val domain: String, val script: String) {
 }
 
 /*
- * Facebook's mobile site pins an "Open app" button to its top bar, and a bar with a big "Open app"
- * button to the bottom of the feed. The buttons carry data-log-comp-type="...open_app" (language
- * independent) and aria-label="Open app"; pinned bars are .fixed-container.top/.bottom/.above-bottom.
- * CSS hides the buttons and any bottom bar holding one, which keeps working as Facebook re-renders;
- * a light sweep also catches a bottom bar wrapped differently. Bars in the top half (with Log in)
- * are never hidden.
+ * Facebook's mobile site pins bars to the top and bottom of the screen: .fixed-container.top and
+ * .bottom (or .above-bottom), each with its height in data-actual-height. When you're logged in,
+ * the bottom one is a white bar holding just a big "Open app" button that has no label or logging
+ * tag, only its text; the logged-out top bar has a tagged "Open app" button next to Log in.
+ * The script hides every "Open app" control in a small pinned bar (found by Facebook's
+ * language-independent tag or label, or by its text), and the whole bottom bar when that is the
+ * only control in it. Big pinned layers (dialogs, sheets, viewers), bars with anything else to
+ * use (e.g. the comment box) and the page itself are never hidden. Facebook reuses these nodes,
+ * so the marks are re-checked on every page change, before the change is drawn.
  */
 private const val FACEBOOK_OPEN_APP_HIDER = """(function () {
-  var ID = 'superapp-open-app-hider';
-  if (document.getElementById(ID)) return;
-  var OPEN_APP = '[data-log-comp-type*="open_app" i],[role="button"][aria-label="Open app" i]';
-  var CSS = OPEN_APP + '{display:none!important}' +
-    '.fixed-container:is(.bottom,.above-bottom):has(' + OPEN_APP + '){display:none!important}';
-  function addStyle() {
-    if (document.getElementById(ID)) return true;
-    var root = document.head || document.documentElement;
-    if (!root) return false;
-    var style = document.createElement('style');
-    style.id = ID;
-    style.textContent = CSS;
-    root.appendChild(style);
-    return true;
+  var KEY = Symbol.for('superapp.open-app-hider');
+  if (window[KEY] || window.top !== window) return;
+  window[KEY] = true;
+  var TAGGED = '[data-log-comp-type*="open_app" i],[role="button"][aria-label="Open app" i]';
+  var CONTROLS = '[role="button"],[role="link"],a[href],button,input,textarea,select,[contenteditable]';
+  var TEXT = /^(open|use|get)( in| the)? app$/i;
+  var ICONS = /[\uE000-\uF8FF]|[\uDB80-\uDBFF][\uDC00-\uDFFF]/g;
+  var BUTTON = 'data-superapp-open-app';
+  var BANNER = 'data-superapp-banner';
+  var MAX_BAR_HEIGHT = 150;
+  var style = document.createElement('style');
+  style.textContent = TAGGED + ',[' + BUTTON + '],[' + BANNER + ']{display:none!important}';
+  var bars = document.getElementsByClassName('fixed-container');
+  var marked = [];
+  var observer = new MutationObserver(sweep);
+
+  function isOpenApp(control) {
+    return control.matches(TAGGED) ||
+      TEXT.test(control.textContent.replace(ICONS, '').replace(/\s+/g, ' ').trim());
   }
-  var pending = false;
+  function barHeight(bar) {
+    var height = parseFloat(bar.getAttribute('data-actual-height'));
+    return isFinite(height) ? height : parseFloat(bar.style.height);
+  }
+  function listed(list, el, attr) {
+    for (var i = 0; i < list.length; i++) if (list[i][0] === el && list[i][1] === attr) return true;
+    return false;
+  }
   function sweep() {
-    pending = false;
-    var buttons = document.querySelectorAll(OPEN_APP);
-    for (var i = 0; i < buttons.length; i++) {
-      for (var e = buttons[i].parentElement; e && e !== document.body; e = e.parentElement) {
-        if (getComputedStyle(e).position !== 'fixed') continue;
-        var r = e.getBoundingClientRect();
-        if (r.height > 0 && r.top > innerHeight / 2) e.style.setProperty('display', 'none', 'important');
-        break;
+    var root = document.head || document.documentElement;
+    if (!style.isConnected && root) root.appendChild(style);
+    var next = [];
+    for (var i = 0; i < bars.length; i++) {
+      var bar = bars[i];
+      if (!(barHeight(bar) <= MAX_BAR_HEIGHT)) continue;
+      var controls = bar.querySelectorAll(CONTROLS), found = null, others = 0;
+      for (var j = 0; j < controls.length; j++) {
+        if (found && found.contains(controls[j])) continue;
+        if (isOpenApp(controls[j])) { found = controls[j]; next.push([found, BUTTON]); } else others++;
       }
+      var bottom = bar.classList.contains('bottom') || bar.classList.contains('above-bottom');
+      if (bottom && found && !others) next.push([bar, BANNER]);
     }
+    for (i = 0; i < marked.length; i++) {
+      if (!listed(next, marked[i][0], marked[i][1])) marked[i][0].removeAttribute(marked[i][1]);
+    }
+    for (i = 0; i < next.length; i++) {
+      if (!next[i][0].hasAttribute(next[i][1])) next[i][0].setAttribute(next[i][1], '');
+    }
+    marked = next;
+    observer.takeRecords();
   }
-  if (!addStyle()) document.addEventListener('DOMContentLoaded', addStyle, { once: true });
-  new MutationObserver(function () {
-    if (!pending) { pending = true; setTimeout(sweep, 500); }
-  }).observe(document, { childList: true, subtree: true });
+  observer.observe(document, {
+    childList: true, subtree: true, characterData: true,
+    attributes: true, attributeFilter: ['class', 'data-actual-height', BUTTON, BANNER]
+  });
+  sweep();
 })();"""
 
 internal val PAGE_TWEAKS = listOf(PageTweak("facebook.com", FACEBOOK_OPEN_APP_HIDER))
