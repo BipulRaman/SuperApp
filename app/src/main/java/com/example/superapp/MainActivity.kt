@@ -31,8 +31,10 @@ import com.example.superapp.browser.FullscreenVideo
 import com.example.superapp.browser.Route
 import com.example.superapp.browser.SiteDrawer
 import com.example.superapp.browser.Tabs
+import com.example.superapp.browser.documentStartScripts
 import com.example.superapp.browser.openExternally
 import com.example.superapp.browser.routeFor
+import com.example.superapp.browser.runPageTweaks
 import com.example.superapp.browser.withoutTracking
 import com.example.superapp.data.SITES
 import com.example.superapp.data.Site
@@ -201,6 +203,10 @@ class MainActivity : Activity() {
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
             onRendererGone(view)
             return true // Handled: without this, a renderer crash or OOM kill takes the whole app down.
+        }
+
+        override fun onPageCommitVisible(view: WebView, url: String) {
+            if (!documentStartScripts) view.runPageTweaks(url)
         }
     }
 

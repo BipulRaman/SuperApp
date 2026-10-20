@@ -32,6 +32,7 @@ internal fun newWebView(context: Context): WebView = WebView(context).apply {
         useChromeIdentity()
     }
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+    addPageTweaks()
     // Visible only until the page paints; match the theme the page will most likely use.
     val night = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     setBackgroundColor(if (night) context.getColor(R.color.bg) else Color.WHITE)
