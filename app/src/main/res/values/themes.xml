@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SuperApp's own UI is always dark. The light/dark parent only decides which
+         prefers-color-scheme the WebView reports, so sites follow the system theme;
+         values-night swaps in the dark parent. -->
+    <style name="Theme.SuperApp.Base" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.SuperApp.Common" parent="Theme.SuperApp.Base">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorEdgeEffect">@color/accent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.SuperApp" parent="Theme.SuperApp.Common" />
+</resources>

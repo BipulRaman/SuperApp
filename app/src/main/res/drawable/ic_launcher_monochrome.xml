@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13+ themed icon: same mark as ic_launcher_foreground, single color (tinted by the system). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M37,32h9a5,5 0,0 1,5 5v9a5,5 0,0 1,-5 5h-9a5,5 0,0 1,-5 -5v-9a5,5 0,0 1,5 -5zM37,57h9a5,5 0,0 1,5 5v9a5,5 0,0 1,-5 5h-9a5,5 0,0 1,-5 -5v-9a5,5 0,0 1,5 -5zM62,57h9a5,5 0,0 1,5 5v9a5,5 0,0 1,-5 5h-9a5,5 0,0 1,-5 -5v-9a5,5 0,0 1,5 -5zM66.5,29Q68,40 79,41.5Q68,43 66.5,54Q65,43 54,41.5Q65,40 66.5,29z" />
+</vector>

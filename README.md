@@ -1,78 +1,105 @@
 # SuperApp
 
-A tiny React Native (Expo) "super app" that opens **Facebook**, **Instagram**, **X / Twitter** and **LinkedIn** in a real native `WebView` — not an `iframe` — so cookies, logins, media playback and pull‑to‑refresh all behave like a normal mobile browser.
+A tiny native Android app (Kotlin) that opens **Facebook**, **Instagram**, **X / Twitter** and **LinkedIn** in real `WebView`s — cookies, logins, media, uploads and downloads behave like a normal mobile browser.
 
-| Home screen | WebView screen |
+| Home screen | Site screen |
 |---|---|
-| 2×2 grid of branded tiles | Native WebView with mobile User‑Agent + toolbar |
+| 2×2 grid of branded tiles (a green dot marks sites that are already loaded) | Full-screen WebView with a slim toolbar and progress bar |
+
+---
+
+## Why it's fast
+
+SuperApp used to be an Expo / React Native app. It was rewritten as a plain native app because the slowness was architectural:
+
+| | Before (Expo / React Native) | Now (native) |
+|---|---|---|
+| APK size | 64.7 MB (4 ABIs of React Native, Hermes, Fabric) | ~40 KB, no native libraries |
+| App start | Boot a JS engine + ~45 native libs before the first frame | One Activity, a few views |
+| Opening a site | New WebView + full page load **every time** | WebView created once, then kept alive |
+| Going back to a site | Cold reload, scroll position lost | Instant, exactly where you left it |
+| While loading | Opaque white overlay until the page fully finished loading | Content shows as soon as it paints; slim progress bar |
+| First tap | Paid for WebView engine start-up | Engine pre-warmed right after the first frame |
+
+Other details: hidden sites are paused (media stopped, timers throttled), everything pauses while the app is in the background, X loads `x.com` directly instead of going through two redirects, and if the page renderer crashes or is killed for memory, SuperApp returns to the grid instead of crashing.
 
 ---
 
 ## Stack
 
-- **Expo SDK 51** + **React Native 0.74**
-- **React Navigation** (native stack)
-- **react-native-webview** (cookies, JS, mobile UA, pull‑to‑refresh)
-- No backend; all state is local
+- **Kotlin**, Android SDK only — no AndroidX, Compose or other runtime libraries
+- **minSdk 26** (Android 8.0), **targetSdk 36** (Android 16), edge-to-edge, predictive back
+- Android Gradle Plugin 9.4 (built-in Kotlin), Gradle 9.8 wrapper, JDK 17+
+- Tests: JUnit + Robolectric
 
 ---
 
 ## Project layout
 
-The entire Expo project lives inside [app/](app/). The repo root only holds repo-wide metadata (`README.md`, `.gitignore`, `.github/`).
+Everything lives inside [app/](app/) — it is a single-module Gradle project. The repo root only holds repo-wide metadata.
 
 ```
-SuperApp/                          # repo root
-├─ README.md
-├─ .gitignore
+SuperApp/                                  # repo root: metadata only
+├─ README.md, LICENSE, CODE_OF_CONDUCT.md, .gitignore, .gitattributes
 ├─ .github/workflows/
-│  ├─ build-and-release.yml        # CI: builds signed APK; tag v* → GitHub Release
-│  └─ setup-keystore.yml           # one-time: prints keystore for repo secret
-└─ app/                            # Expo project root — run all npm/expo commands here
-   ├─ index.js                     # Expo entry
-   ├─ package.json
-   ├─ app.json                     # Expo config (name, package id, icon, splash, version)
-   ├─ eas.json                     # EAS build profiles (preview = APK, production = AAB)
-   ├─ babel.config.js
-   ├─ assets/                      # icons, splash, favicon (referenced by app.json)
-   ├─ scripts/
-   │  └─ generate-icons.ps1
+│  ├─ build-and-release.yml                # builds the signed APK when a GitHub Release is published
+│  └─ setup-keystore.yml                   # one-time: prints keystore for repo secret
+└─ app/                                    # the Android project — run all Gradle commands here
+   ├─ settings.gradle.kts, build.gradle.kts, gradle.properties, proguard-rules.pro
+   ├─ gradlew, gradlew.bat, gradle/wrapper/
    └─ src/
-      ├─ App.js                    # navigation root
-      ├─ screens/
-      │  ├─ HomeScreen.js          # tile grid
-      │  └─ WebViewScreen.js       # native WebView + toolbar + back handler
-      └─ data/
-         └─ apps.js                # list of apps shown on the home grid
+      ├─ main/
+      │  ├─ AndroidManifest.xml
+      │  ├─ java/com/example/superapp/
+      │  │  ├─ MainActivity.kt             # switches screens, lifecycle, back navigation
+      │  │  ├─ data/Sites.kt               # the sites shown on the home grid
+      │  │  ├─ home/HomeScreen.kt          # tile grid + "already loaded" dots
+      │  │  ├─ browser/
+      │  │  │  ├─ Tabs.kt                  # one persistent WebView per site (the speed-up)
+      │  │  │  ├─ WebViews.kt              # WebView settings + Chrome-like user agent
+      │  │  │  ├─ BrowserScreen.kt         # toolbar + progress bar
+      │  │  │  ├─ ExternalLinks.kt         # which links leave the app, and how
+      │  │  │  ├─ FileChooser.kt           # <input type="file"> uploads (files, camera, camcorder)
+      │  │  │  ├─ CaptureProvider.kt       # private file for camera captures (minimal FileProvider)
+      │  │  │  ├─ Downloads.kt             # downloads via DownloadManager
+      │  │  │  └─ FullscreenVideo.kt       # fullscreen <video>
+      │  │  └─ ui/                         # square tiles, site colors, system bars / insets
+      │  └─ res/
+      │     ├─ drawable/                   # vector icons: launcher layers, site glyphs, toolbar
+      │     ├─ mipmap-anydpi/ic_launcher.xml  # adaptive launcher icon (+ themed monochrome layer)
+      │     └─ layout/, values*/, xml/     # screens, colors, strings, themes, backup rules
+      └─ test/java/com/example/superapp/   # JVM + Robolectric tests (mirrors the packages above)
 ```
 
 ---
 
 ## Run locally
 
+Requires **JDK 17+** and the **Android SDK** (Android Studio installs both). Open the `app/` folder in Android Studio and press Run, or:
+
 ```powershell
 cd app
-npm install
-npx expo start
+.\gradlew installDebug          # build + install on a connected device/emulator
+.\gradlew testDebugUnitTest     # unit + Robolectric tests
 ```
 
-Scan the QR code with **Expo Go** on your phone, or press `a` for an Android emulator.
+To add or change sites, edit [app/src/main/java/com/example/superapp/data/Sites.kt](app/src/main/java/com/example/superapp/data/Sites.kt):
 
-To add or change apps, edit [app/src/data/apps.js](app/src/data/apps.js):
-
-```js
-{ id: 'youtube', name: 'YouTube', url: 'https://m.youtube.com/', color: '#FF0000', initial: 'YT' }
+```kotlin
+Site(id = "youtube", name = "YouTube", url = "https://m.youtube.com/", colors = intArrayOf(0xFFFF0000.toInt()))
 ```
+
+`icon` is optional — without one the tile shows the first letter of the name. Icons are vector drawables in `app/src/main/res/drawable/` (24×24 viewport, white).
 
 ---
 
-## Build an Android APK
+## Releasing an APK
+
+APKs are built **only when a GitHub Release is published**. Pushes and merges to `main` never build or publish anything.
 
 ### One-time setup — generate a stable signing keystore
 
-For users to install a newer APK over an older one **without uninstalling**, every build must be signed with the **same key**. By default each CI runner generates a fresh ephemeral debug key, so APK #2 wouldn't install over APK #1.
-
-Fix it once:
+For users to install a newer APK over an older one **without uninstalling**, every build must be signed with the **same key**.
 
 1. Push this repo to GitHub.
 2. Go to **Actions → "Setup signing keystore (run once)" → Run workflow**.
@@ -82,78 +109,44 @@ Fix it once:
    - **Value:** the base64 block from step 3 (no surrounding whitespace)
 5. Save.
 
-The build pipeline now decodes that secret on every run and signs the APK with it. The keystore is **never committed to the repo** — only in the secret. If you ever lose the secret, regenerate it with the setup workflow, but be aware that already-installed APKs will need to be uninstalled before the next update will install.
+The release workflow decodes that secret and signs the APK with it (and fails if the APK ends up signed with any other key). The keystore is **never committed to the repo** — only in the secret. If you ever lose the secret, regenerate it with the setup workflow, but already-installed APKs will need to be uninstalled before the next update will install.
 
-### Option A — GitHub Actions (recommended)
+### Publish a release
 
-A single workflow at [.github/workflows/build-and-release.yml](.github/workflows/build-and-release.yml) handles everything:
+1. **Releases → Draft a new release**, create a tag such as `v1.2.0` on the commit you want to ship, and **Publish**.
+2. [.github/workflows/build-and-release.yml](.github/workflows/build-and-release.yml) runs the tests and Android Lint, builds the minified release APK, signs it, and attaches it to that release as `SuperApp-v1.2.0.apk` (usually within a few minutes).
 
-| Trigger | What it does |
-|---|---|
-| Push to `main` / PR / **Run workflow** button | Builds a debug APK signed with the stable keystore and uploads it as a workflow artifact |
-| Push a tag matching `v*` (e.g. `v1.0.0`) | Same build **plus** publishes a GitHub Release with the APK attached as `SuperApp-v1.0.0.apk` |
+`versionName` comes from the tag (`v1.2.0` → `1.2.0`) and `versionCode` from the workflow run number, so every release is a valid in-place upgrade of the previous one.
 
-**Versioning is automatic:**
+**Install it:** download the APK from the release, copy it to your phone and tap to install (allow "Install unknown apps" once). Newer releases install over older ones and keep your logins — including over the old Expo-based versions, since the package id and signing key are unchanged.
 
-- `versionName` (the user-visible "1.2.3") comes from the git tag (`v1.2.3`). On non-tag pushes it stays at whatever `app/app.json` says.
-- `versionCode` (the integer Android uses to detect updates) is set to `github.run_number` for every build. Each CI run is strictly higher than the previous one, so Android always treats the new APK as an upgrade.
-
-You don't need to edit `app.json` to bump versions — just push a tag.
-
-**No secrets required** — uses the built-in `GITHUB_TOKEN`.
-
-**Get an APK now:**
-
-1. Push this repo to GitHub (after running the keystore setup workflow above).
-2. Wait for the build run, or trigger manually: **Actions → Build & Release APK → Run workflow**.
-3. Open the finished run → **Artifacts** → download the `.apk`.
-4. Copy to your phone, tap to install (allow "Install unknown apps" once).
-5. Push a newer build → install it the same way → it upgrades the existing app in place, your data is preserved.
-
-**Cut a public release with a downloadable APK:**
-
-```powershell
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The workflow builds the APK (with `versionName=1.0.0`) and creates a GitHub Release at `https://github.com/<you>/SuperApp/releases/tag/v1.0.0` with the APK as a download asset.
-
-### Option B — Build locally
-
-Requires **JDK 17** and **Android Studio** (with the Android SDK).
+### Build locally
 
 ```powershell
 cd app
-npm install
-npx expo prebuild --platform android --no-install --clean
-cd android
-.\gradlew assembleDebug
+.\gradlew assembleRelease
 ```
 
-The APK lands at `app/android/app/build/outputs/apk/debug/app-debug.apk`.
-
-For a signed release APK / AAB, generate a keystore once and configure signing in `app/android/gradle.properties` — easiest path is `eas build` (Option A above), which manages the keystore for you.
+The APK lands at `app/build/outputs/apk/release/SuperApp-release.apk`. Without extra configuration it is signed with your local debug key. To sign with the stable keystore instead, set `SUPERAPP_KEYSTORE` to the keystore path (and, if they differ from the Android defaults, `SUPERAPP_KEYSTORE_PASSWORD`, `SUPERAPP_KEY_ALIAS`, `SUPERAPP_KEY_PASSWORD`). Pass `-PversionCode=<n> -PversionName=<x.y.z>` to set the version.
 
 ---
 
 ## Before you publish — checklist
 
-Edit [app/app.json](app/app.json) and bump these for any public release:
-
-- `expo.name` — display name on the phone
-- `expo.android.package` — **must be globally unique** (e.g. `com.<you>.superapp`). Once on the Play Store this can never change.
-- `expo.icon` — path to a 1024×1024 PNG (or remove the line to use the Expo default)
-
-`expo.version` and `expo.android.versionCode` are bumped automatically by CI — `expo.version` from the git tag (e.g. `v1.2.3` → `1.2.3`) and `versionCode` from the GitHub Actions run number. You don't need to touch them.
+- `applicationId` in [app/build.gradle.kts](app/build.gradle.kts) — **must be globally unique** for the Play Store (e.g. `com.<you>.superapp`). Changing it makes it a different app: existing installs won't upgrade in place.
+- App name: `app_name` in [app/src/main/res/values/strings.xml](app/src/main/res/values/strings.xml).
+- Launcher icon: vector layers `ic_launcher_background.xml` / `ic_launcher_foreground.xml` / `ic_launcher_monochrome.xml` in `app/src/main/res/drawable/`.
 
 ---
 
 ## Notes & limitations
 
-- **Login walls.** Instagram / Facebook sometimes detect WebViews and ask you to "open in app." If that happens, swap the User‑Agent in [app/src/screens/WebViewScreen.js](app/src/screens/WebViewScreen.js) for a desktop one, or use OAuth flows for production apps.
-- **Cookies are shared per app** (sandboxed by your package id) but isolated from the system Chrome — so logins live inside SuperApp only.
-- **iOS** is supported by the same code; just run `eas build -p ios` (requires an Apple Developer account).
+- **Android only** (8.0+). The old React Native code could in theory target iOS, but that path was never built or shipped.
+- **Login walls.** SuperApp presents the same user agent as Chrome for Android (built from the device's real WebView version), so sites serve their normal mobile web app. Some sites may still push you toward their native app.
+- **Cookies live inside SuperApp** (sandboxed by the package id), separate from Chrome. They are excluded from backups and device transfers.
+- **Memory.** Opened sites stay loaded for instant switching. They all share one page renderer, so phones with less than 6 GB of RAM keep only the 2–3 most recently used sites loaded (opening another closes the least recently used one). If the renderer still crashes or is killed, the loaded sites close and SuperApp returns to the grid.
+- **Uploads** use the system file picker, plus the camera/camcorder when a site accepts photos or videos.
+- **Links to other apps** (`intent:`, `mailto:`, `tel:`, store links…) open only when you tap them, so pages can't bounce you out of SuperApp on their own.
 
 ---
 

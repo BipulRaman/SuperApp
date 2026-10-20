@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SuperApp</string>
+    <string name="home_subtitle">All your social apps in one place</string>
+    <string name="apps">Apps</string>
+    <string name="cd_back_to_apps">Back to apps</string>
+    <string name="cd_reload">Reload</string>
+    <string name="cd_site_open">%1$s, open</string>
+    <string name="download_started">Downloading %1$s</string>
+    <string name="download_failed">Couldn\'t start the download</string>
+    <string name="download_unsupported">This file can\'t be downloaded</string>
+    <string name="site_closed">%1$s stopped unexpectedly. Tap it to reopen.</string>
+</resources>
