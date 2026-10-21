@@ -66,7 +66,7 @@ class MainActivity : Activity() {
     private lateinit var tabs: Tabs
     private lateinit var fullscreen: FullscreenVideo
     private val fileChooser = FileChooser(this, REQUEST_FILE)
-    private val downloads = Downloads(this, REQUEST_STORAGE)
+    private val downloads = Downloads(this)
 
     private var backCallback: Any? = null // OnBackInvokedCallback, API 33+
     private var backCallbackRegistered = false
@@ -162,12 +162,6 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (!fileChooser.onActivityResult(requestCode, resultCode, data)) super.onActivityResult(requestCode, resultCode, data)
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        if (!downloads.onRequestPermissionsResult(requestCode, grantResults)) {
-            super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        }
     }
 
     // ---- Screens -----------------------------------------------------------------------------
@@ -422,6 +416,5 @@ class MainActivity : Activity() {
 
     private companion object {
         const val REQUEST_FILE = 1
-        const val REQUEST_STORAGE = 2
     }
 }

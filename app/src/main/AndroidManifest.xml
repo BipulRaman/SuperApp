@@ -2,11 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- The only permission, needed to load the sites. Android grants it at install and never
+         asks; SuperApp requests no runtime permissions (camera, microphone, location, storage,
+         contacts...), and sites' requests for them are always refused. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Only needed to save downloads into the public Downloads folder on Android 9 and older. -->
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
 
     <!-- Backups are off so login cookies never leave the device (allowBackup="false" covers
          Android 11 and older, the extraction rules cover device transfers on 12+). -->
