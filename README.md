@@ -10,16 +10,10 @@ A tiny native Android app (Kotlin) that opens **Facebook**, **Instagram**, **X /
 
 ## Why it's fast
 
-SuperApp used to be an Expo / React Native app. It was rewritten as a plain native app because the slowness was architectural:
-
-| | Before (Expo / React Native) | Now (native) |
-|---|---|---|
-| APK size | 64.7 MB (4 ABIs of React Native, Hermes, Fabric) | ~75 KB, no native libraries |
-| App start | Boot a JS engine + ~45 native libs before the first frame | One Activity, a few views |
-| Opening a site | New WebView + full page load **every time** | WebView created once, then kept alive |
-| Going back to a site | Cold reload, scroll position lost | Instant, exactly where you left it |
-| While loading | Opaque white overlay until the page fully finished loading | Content shows as soon as it paints; slim progress bar |
-| First tap | Paid for WebView engine start-up | Engine pre-warmed right after the first frame |
+- **Tiny:** under 100 KB with no native libraries. One Activity and a few views, so it starts instantly.
+- **Sites stay alive:** each site's WebView is created once and then kept, so going back to a site is instant and lands exactly where you left it.
+- **No waiting on loads:** content shows as soon as it paints, under a slim progress bar.
+- **Warm engine:** the WebView engine is pre-warmed right after the first frame, so even the first tap is quick.
 
 Other details: X loads `x.com` directly instead of going through two redirects, and if the page renderer crashes or is killed for memory, SuperApp returns to the grid instead of crashing.
 
@@ -139,7 +133,7 @@ The keystore is **never committed to the repo** — only in the secret.
 
 The tag version is stamped into the APK: `versionName` = `1.2.3`, `versionCode` = `10203` (major × 10000 + minor × 100 + patch), so every newer version installs as an update over older ones. If the tag isn't in that format, or minor/patch reach 100, the release build fails.
 
-**Install it:** download the APK from the release, copy it to your phone and tap to install (allow "Install unknown apps" once). If SuperApp is already installed, this updates it in place — including over the old Expo-based versions, since the package id and signing key are unchanged.
+**Install it:** download the APK from the release, copy it to your phone and tap to install (allow "Install unknown apps" once). If SuperApp is already installed, this updates it in place and keeps your logins.
 
 ### Build locally
 
@@ -162,7 +156,7 @@ The APK lands at `app/build/outputs/apk/release/SuperApp-release.apk`. Without e
 
 ## Notes & limitations
 
-- **Android only** (8.0+). The old React Native code could in theory target iOS, but that path was never built or shipped.
+- **Android only** (8.0+).
 - **Logins.** Sites refuse or redirect logins when they spot an embedded WebView, so SuperApp identifies itself exactly like Chrome for Android on the same engine version: Chrome's User-Agent string *and* matching User-Agent Client Hints (`Sec-CH-UA*` headers, `navigator.userAgentData`), which WebView would otherwise fill with "Android WebView". Sign-in buttons that open a pop-up ("Continue with Google/Apple") get a real window over the site, linked back to it like in Chrome; back or the page itself closes it. Pop-ups the user didn't tap for are blocked.
 - **Cookies live inside SuperApp** (sandboxed by the package id), separate from Chrome. They are excluded from backups and device transfers.
 - **Memory.** Opened sites stay loaded for instant switching (paused while hidden, see [Battery](#battery)). They all share one page renderer, so phones with less than 6 GB of RAM keep only the 2–3 most recently used sites loaded (opening another closes the least recently used one). If the renderer still crashes or is killed, the loaded sites close and SuperApp returns to the grid. To close a site yourself, tap **✕** (left of reload): it's unloaded and SuperApp returns to the grid; you stay logged in, and opening it again loads it fresh.
