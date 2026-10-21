@@ -5,6 +5,8 @@
     <string name="menu_home">Home</string>
     <string name="version">Version %1$s</string>
     <string name="cd_open_menu">Open menu</string>
+    <string name="cd_close">Close site</string>
+    <string name="cd_close_site">Close %1$s</string>
     <string name="cd_reload">Reload</string>
     <string name="cd_share">Share</string>
     <string name="cd_site_open">%1$s, open</string>
@@ -12,4 +14,9 @@
     <string name="download_failed">Couldn\'t start the download</string>
     <string name="download_unsupported">This file can\'t be downloaded</string>
     <string name="site_closed">%1$s stopped unexpectedly. Tap it to reopen.</string>
+    <string name="links_title">Open links in SuperApp</string>
+    <string name="links_off">Off</string>
+    <string name="links_some">On for some links</string>
+    <string name="links_on">On</string>
+    <string name="links_hint">Tap “Add link”, tick every link, then tap Add</string>
 </resources>

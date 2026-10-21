@@ -36,6 +36,52 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Links to the sites tapped in other apps (WhatsApp, Gmail...) open here. Android 12+
+                 only sends them once the user approves them on SuperApp's "Open by default"
+                 settings page (the drawer leads there). Only a domain's owner can verify App Links,
+                 so there's no autoVerify (AppLinkWarning). Hosts must match Site.linkHosts in
+                 data/Sites.kt (tested). -->
+            <intent-filter tools:ignore="AppLinkWarning">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:scheme="http" />
+                <data android:host="facebook.com" />
+                <data android:host="*.facebook.com" />
+                <data android:host="fb.watch" />
+                <data android:host="fb.me" />
+            </intent-filter>
+            <intent-filter tools:ignore="AppLinkWarning">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:scheme="http" />
+                <data android:host="instagram.com" />
+                <data android:host="*.instagram.com" />
+            </intent-filter>
+            <intent-filter tools:ignore="AppLinkWarning">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:scheme="http" />
+                <data android:host="x.com" />
+                <data android:host="*.x.com" />
+                <data android:host="twitter.com" />
+                <data android:host="*.twitter.com" />
+            </intent-filter>
+            <intent-filter tools:ignore="AppLinkWarning">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:scheme="http" />
+                <data android:host="linkedin.com" />
+                <data android:host="*.linkedin.com" />
+            </intent-filter>
         </activity>
 
         <!-- Lets camera apps write a photo/video for uploads; only reachable via one-off URI grants. -->

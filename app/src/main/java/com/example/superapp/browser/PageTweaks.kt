@@ -23,12 +23,15 @@ internal class PageTweak(val domain: String, val script: String) {
  * language-independent tag or label, or by its text), and the whole bottom bar when that is the
  * only control in it. Big pinned layers (dialogs, sheets, viewers), bars with anything else to
  * use (e.g. the comment box) and the page itself are never hidden. Facebook reuses these nodes,
- * so the marks are re-checked on every page change, before the change is drawn.
+ * so the marks are re-checked, before the change is drawn, whenever a page change touches a
+ * pinned bar or a marked element. Telling costs about as much as the change itself, so the rest
+ * of the page's changes (feed, timestamps...) never trigger a scan of the whole page (battery).
  */
 private const val FACEBOOK_OPEN_APP_HIDER = """(function () {
   var KEY = Symbol.for('superapp.open-app-hider');
   if (window[KEY] || window.top !== window) return;
   window[KEY] = true;
+  var BAR = '.fixed-container';
   var TAGGED = '[data-log-comp-type*="open_app" i],[role="button"][aria-label="Open app" i]';
   var CONTROLS = '[role="button"],[role="link"],a[href],button,input,textarea,select,[contenteditable]';
   var TEXT = /^(open|use|get)( in| the)? app$/i;
@@ -40,7 +43,7 @@ private const val FACEBOOK_OPEN_APP_HIDER = """(function () {
   style.textContent = TAGGED + ',[' + BUTTON + '],[' + BANNER + ']{display:none!important}';
   var bars = document.getElementsByClassName('fixed-container');
   var marked = [];
-  var observer = new MutationObserver(sweep);
+  var observer = new MutationObserver(onChange);
 
   function isOpenApp(control) {
     return control.matches(TAGGED) ||
@@ -54,9 +57,36 @@ private const val FACEBOOK_OPEN_APP_HIDER = """(function () {
     for (var i = 0; i < list.length; i++) if (list[i][0] === el && list[i][1] === attr) return true;
     return false;
   }
-  function sweep() {
+  function addStyle() {
     var root = document.head || document.documentElement;
     if (!style.isConnected && root) root.appendChild(style);
+  }
+  function holdsMark(node) {
+    for (var i = 0; i < marked.length; i++) if (node.contains(marked[i][0])) return true;
+    return false;
+  }
+  function touchesBars(records) {
+    var last = null;
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i], el = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+      if (el && el !== last) {
+        last = el;
+        if (el.closest(BAR)) return true;
+      }
+      if (r.type === 'attributes' && el && holdsMark(el)) return true;
+      for (var j = 0; j < r.addedNodes.length; j++) {
+        var n = r.addedNodes[j];
+        if (n.nodeType === 1 && (n.matches(BAR) || n.querySelector(BAR) || holdsMark(n))) return true;
+      }
+    }
+    return false;
+  }
+  function onChange(records) {
+    addStyle();
+    if (touchesBars(records)) sweep();
+  }
+  function sweep() {
+    addStyle();
     var next = [];
     for (var i = 0; i < bars.length; i++) {
       var bar = bars[i];
@@ -87,6 +117,15 @@ private const val FACEBOOK_OPEN_APP_HIDER = """(function () {
 
 internal val PAGE_TWEAKS = listOf(PageTweak("facebook.com", FACEBOOK_OPEN_APP_HIDER))
 
+/**
+ * Runs in every frame of every site: a page that gets hidden (another site or the home grid
+ * shows, or the app is left) stops its audio and video, including embedded players (YouTube...)
+ * that the activity can't reach.
+ */
+internal const val PAUSE_MEDIA_WHEN_HIDDEN = """document.addEventListener('visibilitychange', function () {
+  if (document.hidden) document.querySelectorAll('video,audio').forEach(function (m) { m.pause(); });
+});"""
+
 /** Whether this WebView can run scripts as a page starts loading, before the page's own scripts. */
 internal val documentStartScripts: Boolean by lazy {
     try {
@@ -100,6 +139,7 @@ internal val documentStartScripts: Boolean by lazy {
 internal fun WebView.addPageTweaks() {
     if (!documentStartScripts) return
     if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+        WebViewCompat.addDocumentStartJavaScript(this, PAUSE_MEDIA_WHEN_HIDDEN, setOf("*"))
         for (tweak in PAGE_TWEAKS) WebViewCompat.addDocumentStartJavaScript(this, tweak.script, tweak.originRules)
     }
 }

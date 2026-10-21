@@ -53,4 +53,19 @@ class PageTweaksTest {
             assertFalse(avoided, script.contains(avoided))
         }
     }
+
+    @Test
+    fun `facebook tweak only rescans when a change touches a pinned bar`() {
+        val script = facebook.script
+        assertTrue(script.contains("new MutationObserver(onChange)"))
+        assertTrue(script.contains("if (touchesBars(records)) sweep();"))
+        assertTrue(script.contains("el.closest(BAR)"))
+        assertFalse(script.contains("new MutationObserver(sweep)"))
+    }
+
+    @Test
+    fun `hidden pages stop their media, in every frame`() {
+        assertTrue(PAUSE_MEDIA_WHEN_HIDDEN.contains("document.addEventListener('visibilitychange'"))
+        assertTrue(PAUSE_MEDIA_WHEN_HIDDEN.contains("if (document.hidden) document.querySelectorAll('video,audio')"))
+    }
 }

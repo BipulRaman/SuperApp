@@ -1,9 +1,12 @@
 package com.example.superapp
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.os.PowerManager
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.RenderProcessGoneDetail
@@ -12,6 +15,7 @@ import android.widget.TextView
 import com.example.superapp.browser.PAUSE_MEDIA_JS
 import com.example.superapp.data.SITES
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -21,13 +25,24 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
+import org.robolectric.shadows.ShadowToast
 import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
 class MainActivityTest {
 
-    private val controller: ActivityController<MainActivity> = Robolectric.buildActivity(MainActivity::class.java).setup()
-    private val activity: MainActivity = controller.get()
+    private var controller: ActivityController<MainActivity> = Robolectric.buildActivity(MainActivity::class.java).setup()
+    private val activity: MainActivity get() = controller.get()
+
+    /** Starts SuperApp over with [intent], e.g. a link tapped in another app, instead of from the launcher. */
+    private fun launch(intent: Intent) {
+        controller.pause().stop().destroy()
+        controller = Robolectric.buildActivity(MainActivity::class.java, intent).setup()
+    }
+
+    /** A link tapped in another app ([from] is that app's package). */
+    private fun link(url: String, from: String = "com.whatsapp"): Intent =
+        Intent(Intent.ACTION_VIEW, Uri.parse(url)).putExtra(Intent.EXTRA_REFERRER, Uri.parse("android-app://$from"))
 
     private val tiles: List<View>
         get() {
@@ -168,6 +183,55 @@ class MainActivityTest {
         assertTrue(shadowOf(webView).wasDestroyCalled())
     }
 
+    @Test
+    fun `battery saver keeps only the site on screen loaded`() {
+        tiles[0].performClick()
+        pressBack()
+        tiles[1].performClick()
+        assertEquals(2, webViews.size)
+
+        shadowOf(activity.getSystemService(PowerManager::class.java)).setIsPowerSaveMode(true)
+        activity.sendBroadcast(Intent(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(1, webViews.size)
+        assertEquals(SITES[1].url, shadowOf(webViews.single()).lastLoadedUrl)
+        assertEquals(listOf(false, true), tiles.take(2).map(::isLive))
+
+        // Switching sites closes the one shown before.
+        pressBack()
+        tiles[0].performClick()
+        assertEquals(1, webViews.size)
+    }
+
+    @Test
+    fun `close sits left of reload and unloads the site, keeping the other open sites`() {
+        tiles[1].performClick()
+        pressBack()
+        tiles[0].performClick()
+        val (other, site) = webViews.sortedBy { shadowOf(it).lastLoadedUrl == SITES[0].url }
+        controller.newIntent(link("https://www.facebook.com/share/p/abc/"))
+        val linkWindow = webViews.single { it !== other && it !== site }
+        val toolbar = activity.findViewById<View>(R.id.close).parent as ViewGroup
+        val close = activity.findViewById<View>(R.id.close)
+        assertEquals(toolbar.indexOfChild(activity.findViewById(R.id.reload)) - 1, toolbar.indexOfChild(close))
+        assertEquals("Close Facebook", close.contentDescription)
+
+        close.performClick()
+
+        assertTrue(isShown(R.id.home))
+        assertTrue(shadowOf(site).wasDestroyCalled())
+        assertTrue(shadowOf(linkWindow).wasDestroyCalled())
+        assertEquals(listOf(other), webViews)
+        assertEquals(listOf(false, true), tiles.take(2).map(::isLive))
+
+        pressBack()
+        assertTrue(shadowOf(activity).isTaskMovedToBack) // Back on the grid leaves the app, as usual.
+
+        tiles[0].performClick()
+        assertEquals(SITES[0].url, shadowOf(webViews.single { it !== other }).lastLoadedUrl)
+    }
+
     /** Simulates a page calling window.open(); returns the new window, or null if it was refused. */
     private fun requestWindow(opener: WebView, userGesture: Boolean = true): WebView? {
         val transport = opener.WebViewTransport()
@@ -295,5 +359,113 @@ class MainActivityTest {
         val send = chooser.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)!!
         assertEquals(Intent.ACTION_SEND, send.action)
         assertEquals("https://m.facebook.com/story.php?story_fbid=1&id=2", send.getStringExtra(Intent.EXTRA_TEXT))
+    }
+
+    private fun title() = activity.findViewById<TextView>(R.id.title).text.toString()
+
+    @Test
+    fun `a link tapped in another app opens on its site`() {
+        launch(link("https://www.instagram.com/p/abc/?igsh=xyz"))
+
+        assertTrue(isShown(R.id.browser))
+        assertEquals("Instagram", title())
+        assertEquals("https://www.instagram.com/p/abc/?igsh=xyz", shadowOf(webViews.single()).lastLoadedUrl)
+    }
+
+    @Test
+    fun `back from a link returns to the app it came from, then works as usual`() {
+        launch(link("https://x.com/someone/status/1"))
+        val webView = webViews.single()
+
+        pressBack()
+
+        assertTrue(shadowOf(activity).isTaskMovedToBack)
+        assertFalse(shadowOf(webView).wasDestroyCalled())
+        assertTrue(isShown(R.id.browser))
+
+        pressBack()
+
+        assertTrue(isShown(R.id.home))
+    }
+
+    @Test
+    fun `a link for an open site shows over it and back keeps the site as it was`() {
+        tiles[0].performClick()
+        val site = webViews.single()
+
+        controller.newIntent(link("https://www.facebook.com/share/p/abc/"))
+
+        val window = webViews.last()
+        assertEquals(listOf(site, window), webViews)
+        assertEquals("https://www.facebook.com/share/p/abc/", shadowOf(window).lastLoadedUrl)
+        assertEquals(SITES[0].url, shadowOf(site).lastLoadedUrl)
+
+        pressBack()
+
+        assertTrue(shadowOf(window).wasDestroyCalled())
+        assertEquals(listOf(site), webViews)
+        assertTrue(shadowOf(activity).isTaskMovedToBack)
+        assertTrue(isShown(R.id.browser))
+    }
+
+    @Test
+    fun `a link arriving while another site is open switches to the link's site`() {
+        tiles[1].performClick()
+
+        controller.newIntent(link("https://m.facebook.com/groups/1"))
+
+        assertEquals("Facebook", title())
+        assertEquals(2, webViews.size)
+        assertEquals(View.GONE, webViews.single { shadowOf(it).lastLoadedUrl == SITES[1].url }.visibility)
+    }
+
+    @Test
+    fun `links SuperApp opened itself, or that you moved on from, keep back inside the app`() {
+        controller.newIntent(link("https://www.linkedin.com/feed/", from = activity.packageName))
+        pressBack()
+        assertFalse(shadowOf(activity).isTaskMovedToBack)
+        assertTrue(isShown(R.id.home))
+
+        controller.newIntent(link("https://x.com/someone"))
+        openDrawer()
+        drawerRows()[0].performClick()
+        settle()
+        tiles[2].performClick()
+        pressBack()
+        assertFalse(shadowOf(activity).isTaskMovedToBack)
+        assertTrue(isShown(R.id.home))
+    }
+
+    @Test
+    fun `other links, and links reopened from Recents, are not opened`() {
+        launch(link("https://example.com/"))
+        assertTrue(isShown(R.id.home))
+        assertTrue(webViews.isEmpty())
+
+        launch(link("https://x.com/someone").addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY))
+        assertTrue(isShown(R.id.home))
+        assertTrue(webViews.isEmpty())
+
+        controller.newIntent(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER))
+        assertTrue(isShown(R.id.home))
+    }
+
+    @Test
+    fun `the drawer shows whether links open here and leads to Android's link settings`() {
+        tiles[0].performClick()
+        openDrawer()
+
+        val row = activity.findViewById<ViewGroup>(R.id.drawer_links).getChildAt(0)
+        assertEquals(activity.getString(R.string.links_title), row.findViewById<TextView>(R.id.label).text.toString())
+        assertEquals(activity.getString(R.string.links_off), row.findViewById<TextView>(R.id.detail).text.toString())
+
+        row.performClick()
+        settle()
+
+        val settings = shadowOf(activity).nextStartedActivity
+        assertEquals(Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS, settings.action)
+        assertEquals("package:${activity.packageName}", settings.dataString)
+        assertEquals(activity.getString(R.string.links_hint), ShadowToast.getTextOfLatestToast())
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.drawer_layer).visibility)
     }
 }

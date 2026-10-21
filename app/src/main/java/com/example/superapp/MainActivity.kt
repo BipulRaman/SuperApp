@@ -4,13 +4,17 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.ActivityManager
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.os.Message
+import android.os.PowerManager
 import android.view.View
 import android.view.ViewTreeObserver
 import android.view.inputmethod.InputMethodManager
@@ -28,11 +32,16 @@ import com.example.superapp.browser.BrowserScreen
 import com.example.superapp.browser.Downloads
 import com.example.superapp.browser.FileChooser
 import com.example.superapp.browser.FullscreenVideo
+import com.example.superapp.browser.LinkApproval
 import com.example.superapp.browser.Route
 import com.example.superapp.browser.SiteDrawer
+import com.example.superapp.browser.Tab
 import com.example.superapp.browser.Tabs
 import com.example.superapp.browser.documentStartScripts
+import com.example.superapp.browser.incomingLink
+import com.example.superapp.browser.linkApproval
 import com.example.superapp.browser.openExternally
+import com.example.superapp.browser.openLinkSettings
 import com.example.superapp.browser.routeFor
 import com.example.superapp.browser.runPageTweaks
 import com.example.superapp.browser.withoutTracking
@@ -43,7 +52,8 @@ import com.example.superapp.ui.setUpEdgeToEdge
 
 /**
  * The only activity. It switches between the home grid and the site screen, owns the lifecycle
- * and back navigation, and connects the WebViews' callbacks to the browser features.
+ * and back navigation, connects the WebViews' callbacks to the browser features, and opens site
+ * links tapped in other apps (singleTask, so they reach the running app via onNewIntent).
  *
  * Speed comes from never throwing work away (see [Tabs]) and from warming up the WebView engine
  * right after the first frame, so even the first tap doesn't pay for engine start-up.
@@ -61,6 +71,12 @@ class MainActivity : Activity() {
     private var backCallback: Any? = null // OnBackInvokedCallback, API 33+
     private var backCallbackRegistered = false
 
+    /**
+     * The page showing a link another app sent: back from it returns to that app, like a browser
+     * tab opened from a chat. Cleared once you move on to another screen in SuperApp.
+     */
+    private var linkFromApp: WebView? = null
+
     private val blankPoster by lazy(LazyThreadSafetyMode.NONE) { Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,6 +87,7 @@ class MainActivity : Activity() {
         browser = BrowserScreen(
             findViewById(R.id.browser),
             onMenu = ::openDrawer,
+            onClose = ::closeSite,
             onReload = { tabs.active?.top?.reload() },
             onShare = ::shareCurrentPage,
         )
@@ -81,9 +98,17 @@ class MainActivity : Activity() {
             covered = findViewById(R.id.browser),
             onHome = ::showHome,
             onSite = ::open,
+            // Android 12+ only sends the sites' links to SuperApp once the user approves them.
+            linkApproval = if (Build.VERSION.SDK_INT >= 31) this::linkApproval else null,
+            onLinkSettings = ::openLinkSettingsWithHint,
         )
         tabs = Tabs(this, browser.webContainer, liveSiteLimit(), ::attachCallbacks)
         fullscreen = FullscreenVideo(this, findViewById(R.id.fullscreen), ::updateBackCallback)
+        // Started by a link tapped in another app. Not when restored or reopened from Recents,
+        // which hand back the same link that was already shown.
+        if (savedInstanceState == null && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
+            openLink(intent)
+        }
         afterFirstFrame {
             Looper.myQueue().addIdleHandler {
                 if (!isDestroyed) tabs.prewarm()
@@ -92,12 +117,23 @@ class MainActivity : Activity() {
         }
     }
 
+    /** A link tapped in another app while SuperApp was already running (singleTask). */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openLink(intent) // Now, while referrer still names the app that sent it.
+    }
+
     override fun onStart() {
         super.onStart()
+        // Listened to only while in front (nothing runs in the background); re-checked on every start.
+        registerReceiver(batterySaverChanged, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
+        applyBatterySaver()
         tabs.onStart()
     }
 
     override fun onStop() {
+        unregisterReceiver(batterySaverChanged)
         tabs.onStop()
         super.onStop()
     }
@@ -137,14 +173,30 @@ class MainActivity : Activity() {
     // ---- Screens -----------------------------------------------------------------------------
 
     private fun open(site: Site) {
-        val tab = tabs.show(site)
-        browser.showSite(site, tab.progress)
+        linkFromApp = null
+        showTab(tabs.show(site))
+    }
+
+    private fun showTab(tab: Tab) {
+        browser.showSite(tab.site, tab.progress)
         home.isVisible = false
         browser.isVisible = true
         onTabsChanged()
     }
 
+    /** Shows a site link another app sent (e.g. tapped in WhatsApp) on that site's tab. */
+    private fun openLink(intent: Intent) {
+        val link = incomingLink(intent, SITES) ?: return
+        val fromOtherApp = referrer?.host != packageName
+        drawer.close(animate = false)
+        fullscreen.exit()
+        val tab = tabs.showLink(link.site, link.url)
+        showTab(tab)
+        linkFromApp = if (fromOtherApp) tab.top else null
+    }
+
     private fun showHome() {
+        linkFromApp = null
         drawer.close(animate = false)
         tabs.hideActive()
         getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(window.decorView.windowToken, 0)
@@ -153,14 +205,39 @@ class MainActivity : Activity() {
         onTabsChanged()
     }
 
+    /** Unloads the site on screen to free its memory and returns to the grid; logins stay. */
+    private fun closeSite() {
+        tabs.closeActive() ?: return
+        showHome()
+    }
+
     private fun onTabsChanged() {
         home.showOpenSites(tabs::isOpen)
         updateBackCallback()
     }
 
+    private val batterySaverChanged = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = applyBatterySaver()
+    }
+
+    /** With Android's Battery Saver on, only one site stays loaded and nothing is pre-warmed. */
+    private fun applyBatterySaver() {
+        val on = getSystemService(PowerManager::class.java)?.isPowerSaveMode == true
+        if (on == tabs.saveBattery) return
+        tabs.saveBattery = on
+        onTabsChanged()
+    }
+
     private fun openDrawer() {
         drawer.open(tabs.active?.site, tabs::isOpen)
         updateBackCallback()
+    }
+
+    /** Opens Android's link settings for SuperApp, with a reminder of what to tap there. */
+    private fun openLinkSettingsWithHint() {
+        if (Build.VERSION.SDK_INT < 31) return
+        if (linkApproval() != LinkApproval.ALL) Toast.makeText(this, R.string.links_hint, Toast.LENGTH_LONG).show()
+        openLinkSettings()
     }
 
     /** Shares the page on screen through the system share sheet, minus tracking parameters. */
@@ -250,6 +327,7 @@ class MainActivity : Activity() {
 
     /** A page renderer crashed or was killed for memory: drop what it showed, never the whole app. */
     private fun onRendererGone(view: WebView) {
+        if (view === linkFromApp) linkFromApp = null
         val activeOwner = tabs.find(view)?.takeIf { it === tabs.active }
         if (activeOwner != null) fullscreen.dismiss()
         val closed = tabs.discard(view)
@@ -266,7 +344,8 @@ class MainActivity : Activity() {
 
     /**
      * Leaves fullscreen, goes back in the page (or out of a pop-up window), or returns to the grid.
-     * False when already on the grid.
+     * Back from a link another app sent closes it and returns to that app. False when already on
+     * the grid.
      */
     private fun handleBack(): Boolean {
         if (drawer.isOpen) {
@@ -281,13 +360,20 @@ class MainActivity : Activity() {
         val top = tab.top
         when {
             top.canGoBack() -> top.goBack()
-            top !== tab.webView -> {
-                tabs.closePopup(top)
-                browser.setProgress(tab.progress, animate = false)
+            top === linkFromApp -> {
+                linkFromApp = null
+                if (top !== tab.webView) closePopup(tab, top)
+                moveTaskToBack(true)
             }
+            top !== tab.webView -> closePopup(tab, top)
             else -> showHome()
         }
         return true
+    }
+
+    private fun closePopup(tab: Tab, popup: WebView) {
+        tabs.closePopup(popup)
+        browser.setProgress(tab.progress, animate = false)
     }
 
     /** API 33+: only intercept back while there is something to go back from, so the system's

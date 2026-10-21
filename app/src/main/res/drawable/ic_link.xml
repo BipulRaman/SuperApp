@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Two chain links: "Open links in SuperApp" in the site drawer. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M10.6,13.4a3.6,3.6 0,0 0,5.1 0l2.9,-2.9a3.6,3.6 0,0 0,-5.1 -5.1l-1.2,1.2M13.4,10.6a3.6,3.6 0,0 0,-5.1 0l-2.9,2.9a3.6,3.6 0,0 0,5.1 5.1l1.2,-1.2"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

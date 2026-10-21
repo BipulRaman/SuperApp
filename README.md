@@ -4,7 +4,7 @@ A tiny native Android app (Kotlin) that opens **Facebook**, **Instagram**, **X /
 
 | Home screen | Site screen |
 |---|---|
-| 2×2 grid of branded tiles (a green dot marks sites that are already loaded) | Full-screen WebView; toolbar with a menu drawer to switch sites (app version at its bottom), reload and share |
+| 2×2 grid of branded tiles (a green dot marks sites that are already loaded) | Full-screen WebView; toolbar with a menu drawer to switch sites (link settings and app version at its bottom), close, reload and share |
 
 ---
 
@@ -21,7 +21,17 @@ SuperApp used to be an Expo / React Native app. It was rewritten as a plain nati
 | While loading | Opaque white overlay until the page fully finished loading | Content shows as soon as it paints; slim progress bar |
 | First tap | Paid for WebView engine start-up | Engine pre-warmed right after the first frame |
 
-Other details: hidden sites are paused (media stopped, timers throttled), everything pauses while the app is in the background, X loads `x.com` directly instead of going through two redirects, and if the page renderer crashes or is killed for memory, SuperApp returns to the grid instead of crashing.
+Other details: X loads `x.com` directly instead of going through two redirects, and if the page renderer crashes or is killed for memory, SuperApp returns to the grid instead of crashing.
+
+### Battery
+
+Pages only run while a site is on screen:
+
+- **Leaving the app** (home button, screen off, another app) stops all audio and video, then pauses every page's scripts, timers and layout until you're back. SuperApp has no background services, alarms, location access or push, so it does nothing in the background.
+- **On the home grid**, every site is paused the same way.
+- **Sites you switch away from** stop their audio and video, embedded players (YouTube…) included, and WebView throttles their timers.
+- **Battery Saver on:** only one site stays loaded (opening another closes the rest) and no WebView is pre-warmed. Battery Saver also turns on dark theme, which the sites follow (they always follow the system's light/dark setting); SuperApp's own screens are always dark.
+- **Facebook's page fix** only reacts to changes in Facebook's pinned bars, so it costs next to nothing while the feed scrolls and updates.
 
 ---
 
@@ -58,10 +68,11 @@ SuperApp/                                  # repo root: metadata only
       │  │  │  ├─ Tabs.kt                  # one persistent WebView per site (the speed-up) + its pop-ups
       │  │  │  ├─ WebViews.kt              # WebView settings
       │  │  │  ├─ ChromeIdentity.kt        # look exactly like Chrome: user agent + client hints
-      │  │  │  ├─ BrowserScreen.kt         # toolbar (menu, title, reload, share) + progress bar
+      │  │  │  ├─ BrowserScreen.kt         # toolbar (menu, title, close, reload, share) + progress bar
       │  │  │  ├─ SiteDrawer.kt            # menu drawer: Home + every site, app version
       │  │  │  ├─ ShareLinks.kt            # strips tracking parameters from shared links
       │  │  │  ├─ PageTweaks.kt            # per-site page fixes (hides Facebook's "Open app" banners)
+      │  │  │  ├─ IncomingLinks.kt         # site links tapped in other apps (WhatsApp…) + Android 12+ link approval
       │  │  │  ├─ ExternalLinks.kt         # which links leave the app, and how
       │  │  │  ├─ FileChooser.kt           # <input type="file"> uploads (files, camera, camcorder)
       │  │  │  ├─ CaptureProvider.kt       # private file for camera captures (minimal FileProvider)
@@ -93,7 +104,7 @@ To add or change sites, edit [app/src/main/java/com/example/superapp/data/Sites.
 Site(id = "youtube", name = "YouTube", url = "https://m.youtube.com/", colors = intArrayOf(0xFFFF0000.toInt()))
 ```
 
-`icon` is optional — without one the tile shows the first letter of the name. Icons are vector drawables in `app/src/main/res/drawable/` (24×24 viewport, white).
+`icon` is optional — without one the tile shows the first letter of the name. Icons are vector drawables in `app/src/main/res/drawable/` (24×24 viewport, white). `linkHosts` (optional) lists the hosts whose links, tapped in other apps, open on that site; add the same hosts to the link intent filters in [AndroidManifest.xml](app/src/main/AndroidManifest.xml) (a test checks they match).
 
 ---
 
@@ -154,10 +165,14 @@ The APK lands at `app/build/outputs/apk/release/SuperApp-release.apk`. Without e
 - **Android only** (8.0+). The old React Native code could in theory target iOS, but that path was never built or shipped.
 - **Logins.** Sites refuse or redirect logins when they spot an embedded WebView, so SuperApp identifies itself exactly like Chrome for Android on the same engine version: Chrome's User-Agent string *and* matching User-Agent Client Hints (`Sec-CH-UA*` headers, `navigator.userAgentData`), which WebView would otherwise fill with "Android WebView". Sign-in buttons that open a pop-up ("Continue with Google/Apple") get a real window over the site, linked back to it like in Chrome; back or the page itself closes it. Pop-ups the user didn't tap for are blocked.
 - **Cookies live inside SuperApp** (sandboxed by the package id), separate from Chrome. They are excluded from backups and device transfers.
-- **Memory.** Opened sites stay loaded for instant switching. They all share one page renderer, so phones with less than 6 GB of RAM keep only the 2–3 most recently used sites loaded (opening another closes the least recently used one). If the renderer still crashes or is killed, the loaded sites close and SuperApp returns to the grid.
+- **Memory.** Opened sites stay loaded for instant switching (paused while hidden, see [Battery](#battery)). They all share one page renderer, so phones with less than 6 GB of RAM keep only the 2–3 most recently used sites loaded (opening another closes the least recently used one). If the renderer still crashes or is killed, the loaded sites close and SuperApp returns to the grid. To close a site yourself, tap **✕** (left of reload): it's unloaded and SuperApp returns to the grid; you stay logged in, and opening it again loads it fresh.
 - **Uploads** use the system file picker, plus the camera/camcorder when a site accepts photos or videos.
 - **Facebook's "Open app" nags** are hidden: its "Open app" buttons, and the bar pinned to the bottom of the screen when that button is all it holds (the comment box and dialogs stay). A small script ([PageTweaks.kt](app/src/main/java/com/example/superapp/browser/PageTweaks.kt)) is injected into facebook.com pages only, before Facebook's own scripts run. Similar fixes for other sites go in the same file.
 - **Sharing** (top-right) sends the current page's link without tracking parameters: `utm_*`, `fbclid`, `igsh`, X's `s`/`t`, Facebook's `mibextid`/`__cft__`, LinkedIn's `trk`/`rcm` and similar are removed; parameters the page needs (post ids, `v=`…) stay.
+- **Links from other apps.** Facebook, Instagram, X / Twitter and LinkedIn links tapped in WhatsApp, Gmail, Messages… open in SuperApp, on that site. If the site is already open, the link opens over it, so the page you were on stays as it was; back closes the link and returns to the app you tapped it in. Links to other sites still open in your browser.
+  - **Android 12 and newer** only send these links to an app you approve. Once: open the menu → **Open links in SuperApp** (it shows Off / On) → **Add link** → tick every link → **Add**. On Android 11 and older, pick SuperApp (and **Always**) the first time you tap such a link.
+  - If the official Facebook, Instagram, X or LinkedIn app is installed, it claims its links first and Android greys them out under **Add link**. In that app's App info → **Open by default**, choose **In your browser** (on older Android, turn off **Open supported links**) to free them for SuperApp.
+  - Only plain `http`/`https` links on those sites' hosts are accepted, and they're reloaded over `https` from the checked host, so a crafted link can't slip another site into a site's tab.
 - **Links to other apps** (`intent:`, `mailto:`, `tel:`, store links…) open only when you tap them, so pages can't bounce you out of SuperApp on their own.
 
 ---

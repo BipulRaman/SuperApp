@@ -9,10 +9,11 @@ import com.example.superapp.data.Site
 import com.example.superapp.ui.ACCENT_COLORS
 import com.example.superapp.ui.siteChip
 
-/** The site screen around the WebViews: toolbar (menu, site title, reload, share) and progress bar. */
+/** The site screen around the WebViews: toolbar (menu, site title, close, reload, share) and progress bar. */
 class BrowserScreen(
     private val view: View,
     onMenu: () -> Unit,
+    onClose: () -> Unit,
     onReload: () -> Unit,
     onShare: () -> Unit,
 ) {
@@ -20,10 +21,12 @@ class BrowserScreen(
     /** Holds the sites' WebViews, underneath the progress bar. */
     val webContainer: FrameLayout = view.findViewById(R.id.web_container)
     private val title: TextView = view.findViewById(R.id.title)
+    private val close: View = view.findViewById(R.id.close)
     private val progressBar: View = view.findViewById(R.id.progress)
 
     init {
         view.findViewById<View>(R.id.menu).setOnClickListener { onMenu() }
+        close.setOnClickListener { onClose() }
         view.findViewById<View>(R.id.reload).setOnClickListener { onReload() }
         view.findViewById<View>(R.id.share).setOnClickListener { onShare() }
         progressBar.pivotX = 0f
@@ -39,6 +42,7 @@ class BrowserScreen(
     fun showSite(site: Site, progress: Int) {
         title.text = site.name
         title.setCompoundDrawablesRelative(title.context.siteChip(site), null, null, null)
+        close.contentDescription = view.context.getString(R.string.cd_close_site, site.name)
         setProgress(progress, animate = false)
     }
 

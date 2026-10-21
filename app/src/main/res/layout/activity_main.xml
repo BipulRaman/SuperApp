@@ -105,6 +105,14 @@
                     android:textStyle="bold" />
 
                 <ImageButton
+                    android:id="@+id/close"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/ripple_light"
+                    android:contentDescription="@string/cd_close"
+                    android:src="@drawable/ic_close" />
+
+                <ImageButton
                     android:id="@+id/reload"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
@@ -204,6 +212,15 @@
                     android:layout_height="1dp"
                     android:layout_marginHorizontal="24dp"
                     android:background="#14FFFFFF" />
+
+                <!-- Android 12+: "Open links in SuperApp" row, added by SiteDrawer. -->
+                <LinearLayout
+                    android:id="@+id/drawer_links"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingTop="8dp"
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/drawer_version"

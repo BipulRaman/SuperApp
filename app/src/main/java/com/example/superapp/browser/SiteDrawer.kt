@@ -13,12 +13,16 @@ import com.example.superapp.R
 import com.example.superapp.data.Site
 import com.example.superapp.ui.dp
 import com.example.superapp.ui.homeChip
+import com.example.superapp.ui.linkChip
 import com.example.superapp.ui.siteChip
 
 /**
  * The site screen's menu: Home plus every site, sliding in over the page from the start edge,
  * with the app [version] at the bottom. The current site is highlighted and loaded sites carry a
  * dot, so switching is one tap. It closes on a pick, a tap outside it, or back.
+ *
+ * With [linkApproval] (Android 12+), an "Open links in SuperApp" row above the version shows
+ * whether the sites' links open here and leads to [onLinkSettings].
  */
 class SiteDrawer(
     private val layer: View,
@@ -27,10 +31,13 @@ class SiteDrawer(
     private val covered: View,
     private val onHome: () -> Unit,
     private val onSite: (Site) -> Unit,
+    private val linkApproval: (() -> LinkApproval)? = null,
+    onLinkSettings: () -> Unit = {},
 ) {
     private val panel: View = layer.findViewById(R.id.drawer)
     private val scrim: View = layer.findViewById(R.id.drawer_scrim)
     private val rows = LinkedHashMap<Site, View>()
+    private val linkRow: View?
 
     var isOpen = false
         private set
@@ -44,6 +51,12 @@ class SiteDrawer(
             val row = row(inflater, items, site.name, context.siteChip(site)) { pick { onSite(site) } }
             rows[site] = row
             items.addView(row)
+        }
+        linkRow = linkApproval?.let {
+            val footer = layer.findViewById<LinearLayout>(R.id.drawer_links)
+            footer.visibility = View.VISIBLE
+            row(inflater, footer, context.getString(R.string.links_title), context.linkChip()) { pick(onLinkSettings) }
+                .also(footer::addView)
         }
         layer.findViewById<TextView>(R.id.drawer_version).text = context.getString(R.string.version, version)
         context.getDrawable(R.mipmap.ic_launcher)?.let { icon ->
@@ -63,6 +76,7 @@ class SiteDrawer(
             row.findViewById<View>(R.id.live).visibility = if (loaded) View.VISIBLE else View.GONE
             row.contentDescription = if (loaded) layer.context.getString(R.string.cd_site_open, site.name) else site.name
         }
+        showLinkApproval()
         val width = panelWidth()
         panel.layoutParams = panel.layoutParams.apply { this.width = width }
         layer.visibility = View.VISIBLE
@@ -94,6 +108,26 @@ class SiteDrawer(
     private fun pick(action: () -> Unit) {
         close()
         action()
+    }
+
+    /** Refreshed on every open: the user may have changed it in Android's settings meanwhile. */
+    private fun showLinkApproval() {
+        val row = linkRow ?: return
+        val approval = linkApproval?.invoke() ?: return
+        val context = layer.context
+        val title = context.getString(R.string.links_title)
+        val state = context.getString(
+            when (approval) {
+                LinkApproval.OFF -> R.string.links_off
+                LinkApproval.SOME -> R.string.links_some
+                LinkApproval.ALL -> R.string.links_on
+            },
+        )
+        row.findViewById<TextView>(R.id.detail).apply {
+            text = state
+            visibility = View.VISIBLE
+        }
+        row.contentDescription = "$title, $state"
     }
 
     /** Material's drawer width: the screen minus a 56dp margin to tap outside it, at most 304dp. */
