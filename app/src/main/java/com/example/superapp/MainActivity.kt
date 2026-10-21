@@ -40,7 +40,9 @@ import com.example.superapp.browser.Tabs
 import com.example.superapp.browser.documentStartScripts
 import com.example.superapp.browser.incomingLink
 import com.example.superapp.browser.linkApproval
+import com.example.superapp.browser.mayOpenInApp
 import com.example.superapp.browser.openExternally
+import com.example.superapp.browser.openInApp
 import com.example.superapp.browser.openLinkSettings
 import com.example.superapp.browser.routeFor
 import com.example.superapp.browser.runPageTweaks
@@ -261,15 +263,23 @@ class MainActivity : Activity() {
     // Lint misses the onRenderProcessGone override below in a Kotlin anonymous object.
     @SuppressLint("MissingOnRenderProcessGone")
     private val pageClient = object : WebViewClient() {
-        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-            when (routeFor(request.url.scheme, request.hasGesture())) {
-                Route.WEB_VIEW -> false
+        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            val uri = request.url
+            return when (routeFor(uri.scheme, request.hasGesture())) {
+                Route.WEB_VIEW -> {
+                    // A blank pop-up has no page of its own yet: its first link leaves the opener's.
+                    val current = if (isBlank(view)) null else view.url
+                    val toApp = mayOpenInApp(uri, current, request.isForMainFrame, request.hasGesture(), SITES) && openInApp(uri)
+                    if (toApp) closeIfBlank(view)
+                    toApp
+                }
                 Route.EXTERNAL_APP -> {
-                    openExternally(view, request.url)
+                    if (openExternally(view, uri)) closeIfBlank(view)
                     true
                 }
                 Route.BLOCK -> true
             }
+        }
 
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
             onRendererGone(view)
@@ -368,6 +378,21 @@ class MainActivity : Activity() {
     private fun closePopup(tab: Tab, popup: WebView) {
         tabs.closePopup(popup)
         browser.setProgress(tab.progress, animate = false)
+    }
+
+    /** Whether [view] hasn't shown a page yet, like a pop-up whose first page is still on its way. */
+    private fun isBlank(view: WebView): Boolean {
+        val history = view.copyBackForwardList()
+        if (history.size == 0) return true
+        val url = history.currentItem?.url
+        return history.size == 1 && (url.isNullOrEmpty() || url == "about:blank")
+    }
+
+    /** A pop-up opened only to reach another app (e.g. "Share to WhatsApp") closes once that app opens. */
+    private fun closeIfBlank(view: WebView) {
+        val tab = tabs.find(view) ?: return
+        if (view === tab.webView || !isBlank(view)) return
+        view.post { if (tab.popups.contains(view)) closePopup(tab, view) }
     }
 
     /** API 33+: only intercept back while there is something to go back from, so the system's

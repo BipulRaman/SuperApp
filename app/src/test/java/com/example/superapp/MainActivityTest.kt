@@ -1,6 +1,8 @@
 package com.example.superapp
 
+import android.content.ComponentName
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -10,6 +12,7 @@ import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.widget.TextView
 import com.example.superapp.browser.PAUSE_MEDIA_JS
@@ -276,6 +279,62 @@ class MainActivityTest {
 
         assertEquals(listOf(site), webViews)
         assertTrue(shadowOf(popup).wasDestroyCalled())
+    }
+
+    /** A navigation the page asks for, e.g. after a tap on a link. */
+    private fun navigation(url: String, gesture: Boolean = true) = object : WebResourceRequest {
+        override fun getUrl(): Uri = Uri.parse(url)
+        override fun isForMainFrame() = true
+        override fun isRedirect() = false
+        override fun hasGesture() = gesture
+        override fun getMethod() = "GET"
+        override fun getRequestHeaders(): Map<String, String> = emptyMap()
+    }
+
+    private fun installWhatsApp() {
+        val component = ComponentName("com.whatsapp", "com.whatsapp.Main")
+        val filter = IntentFilter(Intent.ACTION_VIEW).apply {
+            addCategory(Intent.CATEGORY_DEFAULT)
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            addDataScheme("https")
+            addDataAuthority("api.whatsapp.com", null)
+        }
+        shadowOf(activity.packageManager).addActivityIfNotPresent(component)
+        shadowOf(activity.packageManager).addIntentFilterForActivity(component, filter)
+    }
+
+    @Test
+    fun `share to WhatsApp opens the WhatsApp app, other links stay in the page`() {
+        shadowOf(activity.application).checkActivities(true)
+        installWhatsApp()
+        tiles[0].performClick()
+        val site = webViews.single()
+        val client = shadowOf(site).webViewClient
+        val share = "https://api.whatsapp.com/send?text=https%3A%2F%2Fwww.facebook.com%2Fshare%2Fp%2Fabc%2F"
+
+        assertTrue(client.shouldOverrideUrlLoading(site, navigation(share)))
+        assertEquals(share, shadowOf(activity).nextStartedActivity.dataString)
+
+        assertFalse(client.shouldOverrideUrlLoading(site, navigation(share, gesture = false)))
+        assertFalse(client.shouldOverrideUrlLoading(site, navigation("https://example.com/article")))
+        assertFalse(client.shouldOverrideUrlLoading(site, navigation("https://m.facebook.com/groups/1")))
+        assertNull(shadowOf(activity).nextStartedActivity)
+    }
+
+    @Test
+    fun `a pop-up opened only to reach an app closes once the app opens`() {
+        shadowOf(activity.application).checkActivities(true)
+        installWhatsApp()
+        tiles[0].performClick()
+        val site = webViews.single()
+        val popup = requestWindow(site)!!
+
+        assertTrue(shadowOf(popup).webViewClient.shouldOverrideUrlLoading(popup, navigation("https://api.whatsapp.com/send?text=hi")))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertTrue(shadowOf(popup).wasDestroyCalled())
+        assertEquals(listOf(site), webViews)
+        assertTrue(isShown(R.id.browser))
     }
 
     private fun drawerRows(): List<View> {

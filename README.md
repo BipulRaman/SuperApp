@@ -168,7 +168,7 @@ The APK lands at `app/build/outputs/apk/release/SuperApp-release.apk`. Without e
   - **Android 12 and newer** only send these links to an app you approve. Once: open the menu → **Open links in SuperApp** (it shows Off / On) → **Add link** → tick every link → **Add**. On Android 11 and older, pick SuperApp (and **Always**) the first time you tap such a link.
   - If the official Facebook, Instagram, X or LinkedIn app is installed, it claims its links first and Android greys them out under **Add link**. In that app's App info → **Open by default**, choose **In your browser** (on older Android, turn off **Open supported links**) to free them for SuperApp.
   - Only plain `http`/`https` links on those sites' hosts are accepted, and they're reloaded over `https` from the checked host, so a crafted link can't slip another site into a site's tab.
-- **Links to other apps** (`intent:`, `mailto:`, `tel:`, store links…) open only when you tap them, so pages can't bounce you out of SuperApp on their own.
+- **Links to other apps** open those apps, only when you tap them, so pages can't bounce you out of SuperApp on their own: `intent:`, `mailto:`, `tel:`, store links…, and, like in Chrome, web links an installed app owns — WhatsApp (so a site's **Share to WhatsApp** opens WhatsApp), YouTube, Maps…. Links to Facebook, Instagram, X / Twitter and LinkedIn, and links within the site you're on, always stay in SuperApp.
 
 ---
 
