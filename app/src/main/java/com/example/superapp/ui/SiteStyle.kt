@@ -50,6 +50,14 @@ internal fun Context.linkChip(): Drawable {
     return chip(background, R.drawable.ic_link)
 }
 
+/** Chip for the Lite mode switch: a leaf, green while lite mode is on. */
+internal fun Context.liteChip(on: Boolean): Drawable {
+    val background = GradientDrawable()
+    background.cornerRadius = dp(7).toFloat()
+    background.setColor(if (on) 0xFF16A34A.toInt() else 0xFF334155.toInt())
+    return chip(background, R.drawable.ic_lite)
+}
+
 private fun Context.chip(background: Drawable, glyphRes: Int): Drawable {
     val glyph = if (glyphRes != 0) getDrawable(glyphRes) else null
     val chip = if (glyph != null) {

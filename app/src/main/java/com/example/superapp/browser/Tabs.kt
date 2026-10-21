@@ -256,6 +256,9 @@ class Tabs(
 
     private fun create(): WebView = newWebView(context).also(setUp)
 
+    /** Every WebView: the sites', their windows, and the pre-warmed one. */
+    fun allWebViews(): List<WebView> = tabs.values.flatMap { it.views } + listOfNotNull(spare)
+
     /** The pre-warmed WebView if there is one, else a new one. */
     private fun takeSpare(): WebView = (spare ?: create()).also { spare = null }
 

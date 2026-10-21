@@ -5,6 +5,8 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -12,9 +14,12 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.os.PowerManager
+import android.os.SystemClock
+import android.view.ContextMenu
 import android.view.View
 import android.view.ViewTreeObserver
 import android.view.inputmethod.InputMethodManager
@@ -33,23 +38,32 @@ import com.example.superapp.browser.Downloads
 import com.example.superapp.browser.FileChooser
 import com.example.superapp.browser.FullscreenVideo
 import com.example.superapp.browser.LinkApproval
+import com.example.superapp.browser.LiteMode
 import com.example.superapp.browser.Route
 import com.example.superapp.browser.SiteDrawer
 import com.example.superapp.browser.Tab
 import com.example.superapp.browser.Tabs
+import com.example.superapp.browser.WebShare
+import com.example.superapp.browser.addWebShare
+import com.example.superapp.browser.displayUrl
 import com.example.superapp.browser.documentStartScripts
+import com.example.superapp.browser.imageMimeType
 import com.example.superapp.browser.incomingLink
 import com.example.superapp.browser.linkApproval
+import com.example.superapp.browser.longPressTarget
 import com.example.superapp.browser.mayOpenInApp
 import com.example.superapp.browser.openExternally
 import com.example.superapp.browser.openInApp
+import com.example.superapp.browser.openInBrowser
 import com.example.superapp.browser.openLinkSettings
 import com.example.superapp.browser.routeFor
 import com.example.superapp.browser.runPageTweaks
+import com.example.superapp.browser.toSendIntent
 import com.example.superapp.browser.withoutTracking
 import com.example.superapp.data.SITES
 import com.example.superapp.data.Site
 import com.example.superapp.home.HomeScreen
+import com.example.superapp.ui.LiteToggle
 import com.example.superapp.ui.setUpEdgeToEdge
 
 /**
@@ -67,6 +81,8 @@ class MainActivity : Activity() {
     private lateinit var drawer: SiteDrawer
     private lateinit var tabs: Tabs
     private lateinit var fullscreen: FullscreenVideo
+    private lateinit var liteMode: LiteMode
+    private lateinit var liteToggles: List<LiteToggle>
     private val fileChooser = FileChooser(this, REQUEST_FILE)
     private val downloads = Downloads(this)
 
@@ -83,6 +99,8 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Debug builds only: lets Chrome DevTools (chrome://inspect) inspect the sites' pages.
+        if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
         setContentView(R.layout.activity_main)
         window.setUpEdgeToEdge(findViewById(R.id.root))
         home = HomeScreen(findViewById(R.id.home), SITES, ::open)
@@ -106,6 +124,9 @@ class MainActivity : Activity() {
         )
         tabs = Tabs(this, browser.webContainer, liveSiteLimit(), ::attachCallbacks)
         fullscreen = FullscreenVideo(this, findViewById(R.id.fullscreen), ::updateBackCallback)
+        liteMode = LiteMode(this)
+        liteToggles = listOf(R.id.home_lite, R.id.drawer_lite).map { LiteToggle(findViewById(it), ::setLiteMode) }
+        liteToggles.forEach { it.show(liteMode.isOn) }
         // Started by a link tapped in another app. Not when restored or reopened from Recents,
         // which hand back the same link that was already shown.
         if (savedInstanceState == null && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
@@ -236,17 +257,73 @@ class MainActivity : Activity() {
         openLinkSettings()
     }
 
-    /** Shares the page on screen through the system share sheet, minus tracking parameters. */
+    /** Shares the page on screen through the system share sheet: just its link, minus tracking parameters. */
     private fun shareCurrentPage() {
         val tab = tabs.active ?: return
-        val page = tab.top
-        val url = withoutTracking(page.url?.takeIf(URLUtil::isNetworkUrl) ?: tab.site.url)
-        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
-        page.title?.takeIf { it.isNotBlank() }?.let { send.putExtra(Intent.EXTRA_TITLE, it) }
+        val url = withoutTracking(tab.top.url?.takeIf(URLUtil::isNetworkUrl) ?: tab.site.url)
+        showShareSheet(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url))
+    }
+
+    /** A site's own Share button (navigator.share), at most once a second so pages can't nag. */
+    private fun shareFromPage(share: WebShare): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastPageShare < 1000) return false
+        lastPageShare = now
+        return showShareSheet(share.toSendIntent())
+    }
+
+    private var lastPageShare = -1000L
+
+    private fun showShareSheet(send: Intent): Boolean =
         try {
             startActivity(Intent.createChooser(send, null))
+            true
         } catch (e: ActivityNotFoundException) {
-            // Nothing on the device can share text.
+            false // Nothing on the device can share text.
+        }
+
+    private fun copyToClipboard(text: String) {
+        getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(getString(R.string.app_name), text))
+        // Android 13+ confirms copies itself.
+        if (Build.VERSION.SDK_INT < 33) Toast.makeText(this, R.string.copied, Toast.LENGTH_SHORT).show()
+    }
+
+    /** Lite mode from either switch (home screen or drawer): applies to every page, mirrored in both. */
+    private fun setLiteMode(on: Boolean) {
+        if (on != liteMode.isOn) liteMode.set(on, tabs.allWebViews())
+        liteToggles.forEach { it.show(on) }
+    }
+
+    /** The long-press menu for a link or image in a page (see LongPress.kt). */
+    override fun onCreateContextMenu(menu: ContextMenu, view: View, menuInfo: ContextMenu.ContextMenuInfo?) {
+        val webView = view as? WebView ?: return super.onCreateContextMenu(menu, view, menuInfo)
+        val hit = webView.hitTestResult
+        val target = longPressTarget(hit.type, hit.extra) ?: return
+        var link = target.link
+        if (target.linkInImage) {
+            webView.requestFocusNodeHref(
+                Handler(Looper.getMainLooper()) { message ->
+                    link = message.data?.getString("url")?.takeIf(URLUtil::isNetworkUrl)
+                    true
+                }.obtainMessage(),
+            )
+        }
+        // Where the link leads: a click-tracking redirect (Facebook's l.php...) shows its destination.
+        menu.setHeaderTitle(target.link?.let { displayUrl(withoutTracking(it)) } ?: getString(R.string.menu_image))
+        if (target.hasLink) {
+            menu.add(R.string.menu_open_in_browser).setOnMenuItemClickListener { link?.let(::openInBrowser); true }
+            menu.add(R.string.menu_copy_link).setOnMenuItemClickListener { link?.let { copyToClipboard(withoutTracking(it)) }; true }
+            menu.add(R.string.menu_share_link).setOnMenuItemClickListener {
+                link?.let { showShareSheet(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, withoutTracking(it))) }
+                true
+            }
+        }
+        target.image?.let { image ->
+            menu.add(R.string.menu_save_image).setOnMenuItemClickListener {
+                downloads.start(image, webView.settings.userAgentString, null, imageMimeType(image))
+                true
+            }
+            menu.add(R.string.menu_copy_image_link).setOnMenuItemClickListener { copyToClipboard(image); true }
         }
     }
 
@@ -258,6 +335,9 @@ class MainActivity : Activity() {
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             downloads.start(url, userAgent, contentDisposition, mimeType)
         }
+        registerForContextMenu(webView)
+        webView.addWebShare(::shareFromPage)
+        liteMode.setUp(webView)
     }
 
     // Lint misses the onRenderProcessGone override below in a Kotlin anonymous object.

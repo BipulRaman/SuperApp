@@ -1,6 +1,9 @@
 package com.example.superapp
 
+import android.app.DownloadManager
+import android.content.ClipboardManager
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
@@ -9,11 +12,14 @@ import android.os.Looper
 import android.os.Message
 import android.os.PowerManager
 import android.provider.Settings
+import android.view.ContextMenu
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
+import android.webkit.WebView.HitTestResult
+import android.widget.Switch
 import android.widget.TextView
 import com.example.superapp.browser.PAUSE_MEDIA_JS
 import com.example.superapp.data.SITES
@@ -29,6 +35,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.shadows.ShadowToast
+import org.robolectric.shadows.ShadowWebView
 import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
@@ -418,6 +425,7 @@ class MainActivityTest {
         val send = chooser.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)!!
         assertEquals(Intent.ACTION_SEND, send.action)
         assertEquals("https://m.facebook.com/story.php?story_fbid=1&id=2", send.getStringExtra(Intent.EXTRA_TEXT))
+        assertNull(send.getStringExtra(Intent.EXTRA_TITLE)) // Just the link.
     }
 
     private fun title() = activity.findViewById<TextView>(R.id.title).text.toString()
@@ -526,5 +534,136 @@ class MainActivityTest {
         assertEquals("package:${activity.packageName}", settings.dataString)
         assertEquals(activity.getString(R.string.links_hint), ShadowToast.getTextOfLatestToast())
         assertEquals(View.GONE, activity.findViewById<View>(R.id.drawer_layer).visibility)
+    }
+
+    private fun liteSwitch(id: Int) = activity.findViewById<Switch>(id)
+
+    @Test
+    fun `lite mode switches sit at the top of home and drawer and stay in sync`() {
+        val homeSwitch = liteSwitch(R.id.home_lite)
+        val homeContent = homeSwitch.parent as ViewGroup
+        assertEquals(1, homeContent.indexOfChild(homeSwitch)) // Right under the header, above the tiles.
+        assertEquals(2, homeContent.indexOfChild(activity.findViewById(R.id.grid)))
+        val drawerSwitch = liteSwitch(R.id.drawer_lite)
+        val panel = drawerSwitch.parent as ViewGroup
+        assertTrue(panel.indexOfChild(drawerSwitch) < panel.indexOfChild(activity.findViewById<View>(R.id.drawer_items).parent as View))
+        assertFalse(homeSwitch.isChecked || drawerSwitch.isChecked)
+
+        tiles[0].performClick()
+        val webView = webViews.single()
+        openDrawer()
+        drawerSwitch.performClick()
+
+        assertTrue(drawerSwitch.isChecked && homeSwitch.isChecked)
+        assertTrue(webView.settings.mediaPlaybackRequiresUserGesture)
+        assertTrue(isShown(R.id.drawer_layer)) // Switching doesn't close the drawer.
+
+        homeSwitch.performClick()
+
+        assertFalse(drawerSwitch.isChecked || homeSwitch.isChecked)
+        assertFalse(webView.settings.mediaPlaybackRequiresUserGesture)
+    }
+
+    @Test
+    fun `lite mode is remembered`() {
+        liteSwitch(R.id.home_lite).performClick()
+
+        launch(Intent(activity, MainActivity::class.java))
+
+        assertTrue(liteSwitch(R.id.home_lite).isChecked && liteSwitch(R.id.drawer_lite).isChecked)
+        tiles[0].performClick()
+        assertTrue(webViews.single().settings.mediaPlaybackRequiresUserGesture)
+    }
+
+    /** The long-press menu for a hit test of [type] on [webView], built into Android's real context menu. */
+    private fun longPress(webView: WebView, type: Int, extra: String?): ContextMenu {
+        shadowOf(webView).setHitTestResult(ShadowWebView.createHitTestResult(type, extra))
+        val menu = Class.forName("com.android.internal.view.menu.ContextMenuBuilder")
+            .getConstructor(Context::class.java).newInstance(activity) as ContextMenu
+        activity.onCreateContextMenu(menu, webView, null)
+        return menu
+    }
+
+    private fun ContextMenu.titles() = (0 until size()).map { getItem(it).title.toString() }
+
+    private fun ContextMenu.tap(title: Int) {
+        val item = (0 until size()).map(::getItem).single { it.title == activity.getString(title) }
+        item.javaClass.getMethod("invoke").invoke(item)
+    }
+
+    @Test
+    fun `long-pressing a link offers to open, copy or share it, without tracking`() {
+        tiles[0].performClick()
+        val link = "https://example.com/article?utm_source=facebook&id=7&fbclid=abc"
+
+        val menu = longPress(webViews.single(), HitTestResult.SRC_ANCHOR_TYPE, link)
+
+        assertEquals(
+            listOf(R.string.menu_open_in_browser, R.string.menu_copy_link, R.string.menu_share_link).map(activity::getString),
+            menu.titles(),
+        )
+        menu.tap(R.string.menu_copy_link)
+        val clip = activity.getSystemService(ClipboardManager::class.java).primaryClip!!
+        assertEquals("https://example.com/article?id=7", clip.getItemAt(0).text.toString())
+
+        menu.tap(R.string.menu_share_link)
+        val chooser = shadowOf(activity).nextStartedActivity
+        val send = chooser.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)!!
+        assertEquals("https://example.com/article?id=7", send.getStringExtra(Intent.EXTRA_TEXT))
+
+        menu.tap(R.string.menu_open_in_browser)
+        val browser = shadowOf(activity).nextStartedActivity
+        assertEquals(link, browser.dataString)
+        assertTrue(browser.selector!!.hasCategory(Intent.CATEGORY_APP_BROWSER))
+    }
+
+    @Test
+    fun `a link through facebook's click-tracking redirect is shared as where it leads`() {
+        tiles[0].performClick()
+        val shim = "https://lm.facebook.com/l.php?u=https%3A%2F%2Fexample.com%2Fnews%3Fid%3D7%26fbclid%3DIwAR0&h=AT0abc&__tn__=-UK-R"
+
+        val menu = longPress(webViews.single(), HitTestResult.SRC_ANCHOR_TYPE, shim)
+
+        assertEquals("example.com/news", menu.javaClass.getMethod("getHeaderTitle").invoke(menu).toString())
+        menu.tap(R.string.menu_share_link)
+        val send = shadowOf(activity).nextStartedActivity.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)!!
+        assertEquals("https://example.com/news?id=7", send.getStringExtra(Intent.EXTRA_TEXT))
+        menu.tap(R.string.menu_copy_link)
+        val clip = activity.getSystemService(ClipboardManager::class.java).primaryClip!!
+        assertEquals("https://example.com/news?id=7", clip.getItemAt(0).text.toString())
+    }
+
+    @Test
+    fun `long-pressing an image offers to save it or copy its address`() {
+        tiles[0].performClick()
+        val image = "https://pbs.twimg.com/media/ABC?format=png&name=small"
+
+        val menu = longPress(webViews.single(), HitTestResult.IMAGE_TYPE, image)
+
+        assertEquals(listOf(R.string.menu_save_image, R.string.menu_copy_image_link).map(activity::getString), menu.titles())
+        menu.tap(R.string.menu_save_image)
+        val manager = activity.getSystemService(DownloadManager::class.java)
+        val request = (0L..3L).firstNotNullOf { shadowOf(manager).getRequest(it) }
+        assertEquals(image, shadowOf(request).uri.toString())
+        assertTrue(shadowOf(request).destination.toString().endsWith(".png"))
+    }
+
+    @Test
+    fun `an image inside a link offers both`() {
+        tiles[0].performClick()
+
+        val menu = longPress(webViews.single(), HitTestResult.SRC_IMAGE_ANCHOR_TYPE, "https://cdn.example.com/p.jpg")
+
+        assertEquals(5, menu.size())
+    }
+
+    @Test
+    fun `long-pressing anything else shows no menu`() {
+        tiles[0].performClick()
+        val webView = webViews.single()
+
+        assertEquals(0, longPress(webView, HitTestResult.UNKNOWN_TYPE, null).size())
+        assertEquals(0, longPress(webView, HitTestResult.EDIT_TEXT_TYPE, null).size())
+        assertEquals(0, longPress(webView, HitTestResult.SRC_ANCHOR_TYPE, "javascript:alert(1)").size())
     }
 }

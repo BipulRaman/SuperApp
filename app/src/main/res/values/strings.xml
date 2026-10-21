@@ -19,4 +19,13 @@
     <string name="links_some">On for some links</string>
     <string name="links_on">On</string>
     <string name="links_hint">Tap “Add link”, tick every link, then tap Add</string>
+    <string name="lite_title">Lite mode</string>
+    <string name="lite_detail">Videos play only when you tap them</string>
+    <string name="menu_open_in_browser">Open in browser</string>
+    <string name="menu_copy_link">Copy link</string>
+    <string name="menu_share_link">Share link</string>
+    <string name="menu_save_image">Save image</string>
+    <string name="menu_copy_image_link">Copy image link</string>
+    <string name="menu_image">Image</string>
+    <string name="copied">Copied</string>
 </resources>

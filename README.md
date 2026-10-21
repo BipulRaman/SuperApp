@@ -4,7 +4,7 @@ A tiny native Android app (Kotlin) that opens **Facebook**, **Instagram**, **X /
 
 | Home screen | Site screen |
 |---|---|
-| 2×2 grid of branded tiles (a green dot marks sites that are already loaded) | Full-screen WebView; toolbar with a menu drawer to switch sites (link settings and app version at its bottom), close, reload and share |
+| Lite mode switch, then a 2×2 grid of branded tiles (a green dot marks sites that are already loaded) | Full-screen WebView; toolbar with a menu drawer to switch sites (Lite mode at its top, link settings and app version at its bottom), close, reload and share |
 
 ---
 
@@ -25,6 +25,7 @@ Pages only run while a site is on screen:
 - **On the home grid**, every site is paused the same way.
 - **Sites you switch away from** stop their audio and video, embedded players (YouTube…) included, and WebView throttles their timers.
 - **Battery Saver on:** only one site stays loaded (opening another closes the rest) and no WebView is pre-warmed. Battery Saver also turns on dark theme, which the sites follow (they always follow the system's light/dark setting); SuperApp's own screens are always dark.
+- **Lite mode** (switch at the top of the home screen and of the menu): audio and video only play when you tap them, on every site — the feeds' autoplaying videos are where most data and battery go — and pages are told to save data (`navigator.connection.saveData`). Off by default; SuperApp remembers it.
 - **Facebook's page fix** only reacts to changes in Facebook's pinned bars, so it costs next to nothing while the feed scrolls and updates.
 
 ---
@@ -32,7 +33,7 @@ Pages only run while a site is on screen:
 ## Stack
 
 - **Kotlin** on the Android SDK, plus only `androidx.webkit` (for Chrome's client hints) — no Compose, AppCompat or start-up initializers
-- **minSdk 26** (Android 8.0), **targetSdk 36** (Android 16), edge-to-edge, predictive back
+- **minSdk 26** (Android 8.0), **targetSdk 37** (Android 17), edge-to-edge, predictive back
 - Android Gradle Plugin 9.4 (built-in Kotlin), Gradle 9.8 wrapper, JDK 17+
 - Tests: JUnit + Robolectric
 
@@ -64,7 +65,10 @@ SuperApp/                                  # repo root: metadata only
       │  │  │  ├─ ChromeIdentity.kt        # look exactly like Chrome: user agent + client hints
       │  │  │  ├─ BrowserScreen.kt         # toolbar (menu, title, close, reload, share) + progress bar
       │  │  │  ├─ SiteDrawer.kt            # menu drawer: Home + every site, app version
-      │  │  │  ├─ ShareLinks.kt            # strips tracking parameters from shared links
+      │  │  │  ├─ ShareLinks.kt            # cleans shared links: tracking parameters, click-tracking redirects
+      │  │  │  ├─ WebShare.kt              # the sites' own Share buttons → Android's share sheet
+      │  │  │  ├─ LongPress.kt             # long-press menu for links and images
+      │  │  │  ├─ LiteMode.kt              # tap-to-play audio/video + save-data hint
       │  │  │  ├─ PageTweaks.kt            # per-site page fixes (hides Facebook's "Open app" banners)
       │  │  │  ├─ IncomingLinks.kt         # site links tapped in other apps (WhatsApp…) + Android 12+ link approval
       │  │  │  ├─ ExternalLinks.kt         # which links leave the app, and how
@@ -72,7 +76,7 @@ SuperApp/                                  # repo root: metadata only
       │  │  │  ├─ CaptureProvider.kt       # private file for camera captures (minimal FileProvider)
       │  │  │  ├─ Downloads.kt             # downloads via DownloadManager
       │  │  │  └─ FullscreenVideo.kt       # fullscreen <video>
-      │  │  └─ ui/                         # square tiles, site colors, system bars / insets
+      │  │  └─ ui/                         # square tiles, site colors, Lite mode switch, system bars / insets
       │  └─ res/
       │     ├─ drawable/                   # vector icons: launcher layers, site glyphs, toolbar
       │     ├─ mipmap-anydpi/ic_launcher.xml  # adaptive launcher icon (+ themed monochrome layer)
@@ -163,7 +167,13 @@ The APK lands at `app/build/outputs/apk/release/SuperApp-release.apk`. Without e
 - **Memory.** Opened sites stay loaded for instant switching (paused while hidden, see [Battery](#battery)). They all share one page renderer, so phones with less than 6 GB of RAM keep only the 2–3 most recently used sites loaded (opening another closes the least recently used one). If the renderer still crashes or is killed, the loaded sites close and SuperApp returns to the grid. To close a site yourself, tap **✕** (left of reload): it's unloaded and SuperApp returns to the grid; you stay logged in, and opening it again loads it fresh.
 - **Uploads** use the system file picker, plus the camera/camcorder when a site accepts photos or videos.
 - **Facebook's "Open app" nags** are hidden: its "Open app" buttons, and the bar pinned to the bottom of the screen when that button is all it holds (the comment box and dialogs stay). A small script ([PageTweaks.kt](app/src/main/java/com/example/superapp/browser/PageTweaks.kt)) is injected into facebook.com pages only, before Facebook's own scripts run. Similar fixes for other sites go in the same file.
-- **Sharing** (top-right) sends the current page's link without tracking parameters: `utm_*`, `fbclid`, `igsh`, X's `s`/`t`, Facebook's `mibextid`/`__cft__`, LinkedIn's `trk`/`rcm` and similar are removed; parameters the page needs (post ids, `v=`…) stay.
+- **Sharing** (top-right) sends just the current page's link (no title or text). Every link SuperApp shares or copies is cleaned of tracking in its query string, while parameters the page needs (post ids, `v=`, `t=`…) stay:
+  - who referred you or where it was shared from: `ref`, `referrer`, `ref_src`, Instagram's `igsh`, X's `s`/`t`, YouTube's and Spotify's `si`, Facebook's `mibextid`/`wtsid`;
+  - ad-click and analytics tags: `utm_*`, `fbclid`, `gclid`, `gad_*`, `msclkid`, Matomo's `mtm_*`/`pk_*`, HubSpot's, Mailchimp's, Marketo's and similar;
+  - the sites' own trackers: Facebook's `__cft__`/`__tn__`, LinkedIn's `trk`/`rcm`, TikTok's and Reddit's share ids…;
+  - click-tracking redirects (Facebook's and Messenger's `l.php?u=`, Instagram's, LinkedIn's, YouTube's, Google's `/url?q=`) are replaced by the link they lead to.
+- **The sites' own Share buttons** ("Share via…", "More options") open Android's share sheet too. They use the Web Share API (`navigator.share`), which WebView lacks, so SuperApp provides it on Facebook, Instagram, X and LinkedIn pages only, and only after a tap. Just the link goes out, cleaned as above — any title or text the page adds is left out. Nothing on the phone becomes visible to the page.
+- **Long-press** a link to open it in your browser, copy it or share it (cleaned as above), or an image to save it to Downloads or copy its address. Pages that handle long presses themselves (e.g. reactions) keep doing so.
 - **Links from other apps.** Facebook, Instagram, X / Twitter and LinkedIn links tapped in WhatsApp, Gmail, Messages… open in SuperApp, on that site. If the site is already open, the link opens over it, so the page you were on stays as it was; back closes the link and returns to the app you tapped it in. Links to other sites still open in your browser.
   - **Android 12 and newer** only send these links to an app you approve. Once: open the menu → **Open links in SuperApp** (it shows Off / On) → **Add link** → tick every link → **Add**. On Android 11 and older, pick SuperApp (and **Always**) the first time you tap such a link.
   - If the official Facebook, Instagram, X or LinkedIn app is installed, it claims its links first and Android greys them out under **Add link**. In that app's App info → **Open by default**, choose **In your browser** (on older Android, turn off **Open supported links**) to free them for SuperApp.

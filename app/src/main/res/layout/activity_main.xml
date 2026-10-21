@@ -58,11 +58,29 @@
                     </LinearLayout>
                 </LinearLayout>
 
+                <!-- Lite mode, at the top of the home screen (same switch as in the drawer). -->
+                <Switch
+                    android:id="@+id/home_lite"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="24dp"
+                    android:background="@drawable/toggle_background"
+                    android:drawablePadding="14dp"
+                    android:minHeight="64dp"
+                    android:paddingStart="16dp"
+                    android:paddingTop="10dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="10dp"
+                    android:switchPadding="12dp"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:theme="@android:style/ThemeOverlay.Material.Dark" />
+
                 <LinearLayout
                     android:id="@+id/grid"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
+                    android:layout_marginTop="18dp"
                     android:orientation="vertical" />
             </LinearLayout>
         </ScrollView>
@@ -190,6 +208,31 @@
                     android:layout_height="1dp"
                     android:layout_marginHorizontal="24dp"
                     android:layout_marginBottom="8dp"
+                    android:background="#14FFFFFF" />
+
+                <!-- Lite mode, at the top of the drawer (same switch as on the home screen). -->
+                <Switch
+                    android:id="@+id/drawer_lite"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="12dp"
+                    android:background="@drawable/drawer_item_background"
+                    android:drawablePadding="16dp"
+                    android:minHeight="56dp"
+                    android:paddingStart="14dp"
+                    android:paddingTop="6dp"
+                    android:paddingEnd="10dp"
+                    android:paddingBottom="6dp"
+                    android:switchPadding="12dp"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:theme="@android:style/ThemeOverlay.Material.Dark" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginHorizontal="24dp"
+                    android:layout_marginVertical="8dp"
                     android:background="#14FFFFFF" />
 
                 <ScrollView

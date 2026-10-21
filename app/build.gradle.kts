@@ -4,13 +4,13 @@ plugins {
 
 android {
     namespace = "com.example.superapp"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         // Must stay com.example.superapp so new builds install over the old Expo-based APKs.
         applicationId = "com.example.superapp"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         // CI passes -PversionCode / -PversionName from the release tag (1.2.3 -> 10203); local
         // builds use these defaults.
         versionCode = providers.gradleProperty("versionCode").map(String::toInt).getOrElse(1)

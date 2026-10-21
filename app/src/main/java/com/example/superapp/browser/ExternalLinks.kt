@@ -90,6 +90,28 @@ internal fun mayOpenInApp(target: Uri, currentUrl: String?, mainFrame: Boolean, 
 private fun siteOf(host: String): String = host.split('.').takeLast(2).joinToString(".")
 
 /**
+ * Opens [url] in the user's browser, even where an app (SuperApp included) would take the link,
+ * falling back to whatever handles it.
+ */
+internal fun Activity.openInBrowser(url: String) {
+    val view = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE)
+    // The selector picks the target (the default browser), which then gets the link to view.
+    view.selector = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_BROWSER)
+    try {
+        startActivity(view)
+    } catch (e: ActivityNotFoundException) {
+        view.selector = null
+        try {
+            startActivity(view)
+        } catch (e: RuntimeException) {
+            // Nothing on the device opens web links.
+        }
+    } catch (e: RuntimeException) {
+        // The browser refused the launch.
+    }
+}
+
+/**
  * Opens a web link in the app installed for it, if any app but a browser handles it. False when
  * only browsers do, so it loads in the WebView.
  */
