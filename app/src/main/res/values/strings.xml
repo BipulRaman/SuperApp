@@ -20,7 +20,7 @@
     <string name="links_on">On</string>
     <string name="links_hint">Tap “Add link”, tick every link, then tap Add</string>
     <string name="lite_title">Lite mode</string>
-    <string name="lite_detail">Videos play only when you tap them</string>
+    <string name="lite_detail">Videos load only when you tap them</string>
     <string name="menu_open_in_browser">Open in browser</string>
     <string name="menu_copy_link">Copy link</string>
     <string name="menu_share_link">Share link</string>

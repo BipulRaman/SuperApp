@@ -78,10 +78,16 @@ class LongPressAndLiteModeTest {
     }
 
     @Test
-    fun `the lite mode script only stops playback the user didn't start`() {
-        assertTrue(LITE_MODE_SCRIPT.contains("document.addEventListener('play'"))
-        assertTrue(LITE_MODE_SCRIPT.contains("if (!activation || activation.isActive) tapped.add(media);"))
+    fun `the lite mode script keeps players the user didn't tap from playing or downloading`() {
+        // Stops autoplay, preloading and the players' own downloads, and starts a player on a tap.
+        assertTrue(LITE_MODE_SCRIPT.contains("media.play = function play() {"))
+        assertTrue(LITE_MODE_SCRIPT.contains("nativeSetAttribute.call(player, 'preload', 'none')"))
+        assertTrue(LITE_MODE_SCRIPT.contains("window.fetch = function fetch(input, init) {"))
+        assertTrue(LITE_MODE_SCRIPT.contains("xhr.send = function send() {"))
+        assertTrue(LITE_MODE_SCRIPT.contains("window.addEventListener('pointerup'"))
         assertTrue(LITE_MODE_SCRIPT.contains("'saveData'"))
-        assertFalse(LITE_MODE_SCRIPT.contains("$"))
+        assertTrue(LITE_MODE_OFF_SCRIPT.contains("state.turnOff()"))
+        // Kotlin would read a dollar sign in these raw strings as a template.
+        assertFalse(LITE_MODE_SCRIPT.contains("$") || LITE_MODE_OFF_SCRIPT.contains("$"))
     }
 }

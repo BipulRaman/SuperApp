@@ -25,7 +25,7 @@ Pages only run while a site is on screen:
 - **On the home grid**, every site is paused the same way.
 - **Sites you switch away from** stop their audio and video, embedded players (YouTube…) included, and WebView throttles their timers.
 - **Battery Saver on:** only one site stays loaded (opening another closes the rest) and no WebView is pre-warmed. Battery Saver also turns on dark theme, which the sites follow (they always follow the system's light/dark setting); SuperApp's own screens are always dark.
-- **Lite mode** (switch at the top of the home screen and of the menu): audio and video only play when you tap them, on every site — the feeds' autoplaying videos are where most data and battery go — and pages are told to save data (`navigator.connection.saveData`). Off by default; SuperApp remembers it.
+- **Lite mode** (switch at the top of the home screen and of the menu): videos load and play only when you tap them, on every site. The feeds otherwise autoplay videos and download them ahead as you scroll — Facebook's NASA page pulled 20 MB in 30 s even with autoplay blocked — which is where most data and battery go. In Lite mode a video you haven't tapped can't start, doesn't preload, and its player's video downloads wait (without failing) until you tap it; on most sites its stream isn't even connected until then, so tapping one video doesn't load the others. Measured with Lite mode on: 0 bytes of video before a tap on Facebook, X and LinkedIn, and on X a tap loaded only the tapped video; X's feed used 0 MB of video instead of 79.5 MB and a third less CPU. Lite mode itself costs no battery: it does nothing on its own (no timers or polling), only a quick check when a page requests something or a video event happens — on a page without videos the CPU use was the same. Audio also only plays when tapped, and pages are told to save data (`navigator.connection.saveData`). Off by default; SuperApp remembers it.
 - **Facebook's page fix** only reacts to changes in Facebook's pinned bars, so it costs next to nothing while the feed scrolls and updates.
 
 ---
@@ -68,7 +68,7 @@ SuperApp/                                  # repo root: metadata only
       │  │  │  ├─ ShareLinks.kt            # cleans shared links: tracking parameters, click-tracking redirects
       │  │  │  ├─ WebShare.kt              # the sites' own Share buttons → Android's share sheet
       │  │  │  ├─ LongPress.kt             # long-press menu for links and images
-      │  │  │  ├─ LiteMode.kt              # tap-to-play audio/video + save-data hint
+      │  │  │  ├─ LiteMode.kt              # Lite mode: videos load and play only when tapped, save-data hint
       │  │  │  ├─ PageTweaks.kt            # per-site page fixes (hides Facebook's "Open app" banners)
       │  │  │  ├─ IncomingLinks.kt         # site links tapped in other apps (WhatsApp…) + Android 12+ link approval
       │  │  │  ├─ ExternalLinks.kt         # which links leave the app, and how
